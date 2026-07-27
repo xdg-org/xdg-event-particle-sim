@@ -31,6 +31,7 @@ endif()
 
 add_executable(xdg-particle-sim-event
   src/particle_sim_event.cpp
+  src/particle_sim_event_transport.cpp
 )
 
 target_compile_features(xdg-particle-sim-event PRIVATE cxx_std_17)
