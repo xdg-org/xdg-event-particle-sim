@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "base",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_FLAGS": "$env{PRESET_CXX_FLAGS} $env{LLVM_CXX_FLAGS} $env{COMMON_CXX_FLAGS}",
+        "CMAKE_PREFIX_PATH": "$env{XDG_INSTALL_PREFIX}",
+        "EVENT_SIM_CMAKE_PRESET": "${presetName}"
+      },
+      "environment": {
+        "COMMON_CXX_FLAGS": ""
+      }
+    },
+    {
+      "name": "llvm",
+      "inherits": ["base"],
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_CUDA_COMPILER": "/usr/local/cuda-12.6/bin/nvcc",
+        "CMAKE_CUDA_ARCHITECTURES": "89"
+      },
+      "environment": {
+        "LLVM_CXX_FLAGS": "-fopenmp -fopenmp-cuda-mode"
+      }
+    },
+    {
+      "name": "llvm_ada",
+      "inherits": ["llvm"],
+      "displayName": "LLVM OpenMP offload RTX 2000 Ada",
+      "cacheVariables": {
+        "EVENT_SIM_ENABLE_CUDA_THRUST_SORT": "ON"
+      },
+
+      "environment": {
+        "PRESET_CXX_FLAGS": "-fopenmp-targets=nvptx64 -Xopenmp-target -march=sm_89"
+      }
+    },
+    {
+      "name": "nvhpc",
+      "inherits": ["base"],
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "nvc",
+        "CMAKE_CXX_COMPILER": "nvc++"
+      }
+    },
+    {
+      "name": "nvhpc_ada",
+      "inherits": ["nvhpc"],
+      "displayName": "NVHPC OpenMP offload RTX 2000 Ada",
+      "environment": {
+        "PRESET_CXX_FLAGS": "-mp=gpu -Minfo=mp -gpu=cc89"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "llvm_ada",
+      "configurePreset": "llvm_ada"
+    },
+    {
+      "name": "nvhpc_ada",
+      "configurePreset": "nvhpc_ada"
+    }
+  ]
+}
