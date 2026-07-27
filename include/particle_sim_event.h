@@ -360,21 +360,20 @@ void process_advance_particle_events(EventSimulationData& sim_data);
 void process_surface_crossing_events(EventSimulationData& sim_data);
 void process_collision_events(EventSimulationData& sim_data);
 
-inline std::int32_t count_unique_ray_volumes(const XDGRayHitBuffer& ray_hits,
-                                             std::uint64_t* device_last_queried_batch_by_volume,
-                                             std::uint64_t batch_index)
+inline std::int32_t count_unique_queued_volumes(const ParticleEventQueue::DD& advance_queue,
+                                               int num_rays,
+                                               std::uint64_t* device_last_queried_batch_by_volume,
+                                               std::uint64_t batch_index,
+                                               int gpu_id)
 {
   std::int32_t num_unique_volumes = 0;
-  XDGRayHit* device_ray_hits = ray_hits.data;
-  const int num_rays = static_cast<int>(ray_hits.count);
-  const int gpu_id = ray_hits.device_id;
 
   #pragma omp target teams distribute parallel for device(gpu_id) \
-    is_device_ptr(device_ray_hits, device_last_queried_batch_by_volume) \
+    is_device_ptr(device_last_queried_batch_by_volume) \
     map(tofrom: num_unique_volumes) \
-    firstprivate(batch_index)
+    firstprivate(advance_queue, batch_index)
   for (int i = 0; i < num_rays; ++i) {
-    const MeshID volume = device_ray_hits[i].volume;
+    const MeshID volume = advance_queue.data[i].volume;
     std::uint64_t previous_batch_index;
 
     #pragma omp atomic capture
@@ -656,8 +655,11 @@ inline void process_advance_particle_events(EventSimulationData& sim_data)
 
   if (sim_data.profile_rays_) {
     const std::uint64_t batch_index = sim_data.profiling.advance_calls - 1;
-    const std::int32_t num_unique_volumes =
-      count_unique_ray_volumes(active_hits, sim_data.device_last_queried_batch_by_volume, batch_index);
+    const std::int32_t num_unique_volumes = count_unique_queued_volumes(advance_queue,
+                                                                        n_advance,
+                                                                        sim_data.device_last_queried_batch_by_volume,
+                                                                        batch_index,
+                                                                        gpu_id);
 
     sim_data.host_ray_batch_records_.push_back({
       batch_index,

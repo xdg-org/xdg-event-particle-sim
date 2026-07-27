@@ -7,8 +7,7 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
         "CMAKE_CXX_FLAGS": "$env{PRESET_CXX_FLAGS} $env{LLVM_CXX_FLAGS} $env{COMMON_CXX_FLAGS}",
-        "CMAKE_PREFIX_PATH": "$env{XDG_INSTALL_PREFIX}",
-        "EVENT_SIM_CMAKE_PRESET": "${presetName}"
+        "CMAKE_PREFIX_PATH": "$env{XDG_INSTALL_PREFIX}"
       },
       "environment": {
         "COMMON_CXX_FLAGS": ""
