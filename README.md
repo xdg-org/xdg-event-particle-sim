@@ -45,15 +45,16 @@ Run example:
 ./build/llvm_ada/xdg-particle-sim-event <mesh.h5m> \
   --mesh-library MOAB \
   --rt-library CUBQL \
-  --sort-rays-by-volume
+  --sort-by-volume
 ```
 
-The `--sort-rays-by-volume` option enables the Thrust queue sort at runtime.
+The `--sort-by-volume` option enables the Thrust queue sort at runtime.
 
 ## Plotting Ray Batch Data
 
-The `plot_ray_batches.py` script reads the per-batch CSV written by
-`--profile-rays` and produces basic ray-tracing performance plots.
+The `plot_ray_batches.py` script reads the per-launch CSV written by
+`--enable-profiling-ray-launch` and produces basic ray-tracing performance
+plots.
 
 Generate batch data:
 
@@ -61,7 +62,7 @@ Generate batch data:
 ./build/llvm_ada/xdg-particle-sim-event <mesh.h5m> \
   --mesh-library MOAB \
   --rt-library CUBQL \
-  --profile-rays \
+  --enable-profiling-ray-launch \
   --ray-profile-output ray-batches.csv
 ```
 
@@ -69,4 +70,39 @@ Then run:
 
 ```bash
 python3 plot_ray_batches.py ray-batches.csv
+```
+
+## Mean Free Path Sweeps
+
+The `sweep_mean_free_path.py` script runs the particle simulation over a list
+of mean free paths, writes one consolidated CSV row per run, and automatically
+plots particle outcomes, ray throughput, runtime, and transport workload.
+
+For example:
+
+```bash
+python3 sweep_mean_free_path.py run atr.h5m \
+  --mean-free-paths 0.1 0.25 0.5 1 2 5 10 \
+  --output-directory mfp_sweep \
+  --sort-by-volume \
+  --profile-ray-launches
+```
+
+The main outputs are:
+
+```text
+mfp_sweep/mean_free_path_sweep.csv
+mfp_sweep/mean_free_path_sweep_summary.png
+mfp_sweep/mean_free_path_sweep_particle_states.png
+mfp_sweep/mean_free_path_sweep_ray_performance.png
+mfp_sweep/mean_free_path_sweep_workload.png
+```
+
+With `--profile-ray-launches`, the script also retains a ray-batch CSV and
+generates the existing ray-batch summary plot for every mean free path.
+
+Plots can be regenerated without rerunning transport:
+
+```bash
+python3 sweep_mean_free_path.py plot mfp_sweep/mean_free_path_sweep.csv
 ```

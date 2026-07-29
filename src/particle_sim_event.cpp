@@ -81,7 +81,7 @@ try {
 catch (const std::runtime_error& err) {
   std::cout << err.what() << std::endl;
   std::cout << args;
-  exit(0);
+  return 1;
 }
 
 Timer wall_timer;
@@ -144,7 +144,7 @@ for (MeshID surface : mm->surfaces()) {
 sim_data.mfp_ = args.get<double>("--mfp");
 
 sim_data.profile_rays_ = args.get<bool>("--enable-profiling-ray-launch");
-sim_data.sort_rays_by_volume_ = args.get<bool>("--sort-rays-by-volume");
+sim_data.sort_rays_by_volume_ = args.get<bool>("--sort-by-volume");
 sim_data.minimum_sort_items_ = args.get<int>("--minimum-sort-items");
 sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
 sim_data.n_particles_ = args.get<uint32_t>("--n-particles");
