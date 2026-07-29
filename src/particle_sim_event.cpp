@@ -44,34 +44,34 @@ args.add_argument("-g", "--ipc-graveyard")
     .implicit_value(true)
     .help("Treat the implicit complement as a graveyard (i.e. particles that enter it are killed)");
 
-args.add_argument("-m", "--mesh-library")
+args.add_argument("-ml", "--mesh-library")
     .help("Mesh library to use. One of (MOAB, LIBMESH)")
     .default_value("MOAB");
 
-args.add_argument("-r", "--rt-library")
+args.add_argument("-rt", "--rt-library")
     .help("Ray tracing library to use. Event transport currently requires CUBQL")
     .default_value("CUBQL");
 
-args.add_argument("--format")
+args.add_argument("-f", "--format")
   .default_value("human")
   .choices("human", "csv")
   .help("stdout format. Human readable (default) or csv");
 
-args.add_argument("--profile-rays")
+args.add_argument("-p", "--enable-profiling-ray-launch")
     .default_value(false)
     .implicit_value(true)
-    .help("Collect per-batch ray tracing profiling data");
+    .help("Collect per-launch ray tracing profiling data");
 
-args.add_argument("--ray-profile-output")
+args.add_argument("-o", "--ray-profile-output")
     .default_value("ray-batches.csv")
     .help("Output file for per-batch ray tracing profiling data");
 
-args.add_argument("--sort-rays-by-volume")
+args.add_argument("-s", "--sort-vol", "--sort-by-volume")
     .default_value(false)
     .implicit_value(true)
     .help("Sort each advance queue by volume on the device before ray packing");
 
-args.add_argument("--minimum-sort-items")
+args.add_argument("-i", "--nsort", "--minimum-sort-items")
     .default_value(20000)
     .help("Minimum advance queue size required for volume sorting").scan<'i', int>();
 
@@ -143,7 +143,7 @@ for (MeshID surface : mm->surfaces()) {
 // update the mean free path
 sim_data.mfp_ = args.get<double>("--mfp");
 
-sim_data.profile_rays_ = args.get<bool>("--profile-rays");
+sim_data.profile_rays_ = args.get<bool>("--enable-profiling-ray-launch");
 sim_data.sort_rays_by_volume_ = args.get<bool>("--sort-rays-by-volume");
 sim_data.minimum_sort_items_ = args.get<int>("--minimum-sort-items");
 sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
