@@ -15,10 +15,20 @@ def plot_filename(name, csv_stem):
     return f"{csv_stem}_{name}.png"
 
 
+def process_ray_batches(ray_batches):
+    # Filter out queue-draining batches before deriving plot-ready columns.
+    minimum_num_rays = 0.5 * ray_batches["num_rays"].max()
+    processed_ray_batches = ray_batches[ray_batches["num_rays"] >= minimum_num_rays].copy()
+
+    # Add derived metrics to the dataframe
+    processed_ray_batches["ray_throughput_mrays_per_s"] = processed_ray_batches["ray_throughput_rays_per_s"] / 1.0e6
+    processed_ray_batches["batch_size_mrays"] = processed_ray_batches["num_rays"] / 1.0e6
+    return processed_ray_batches
+
+
 def plot_ray_throughput_by_batch(ray_batches, csv_title, csv_stem):
     fig, ax = plt.subplots()
-    throughput_mrays = ray_batches["ray_throughput_rays_per_s"] / 1.0e6
-    ax.scatter(ray_batches["batch_index"], throughput_mrays, s=6, alpha=0.5)
+    ax.scatter(ray_batches["batch_index"], ray_batches["ray_throughput_mrays_per_s"], s=6, alpha=0.5)
     ax.set_title(plot_title("Ray Throughput by Batch", csv_title))
     ax.set_xlabel("Batch index")
     ax.set_ylabel("Ray throughput (million rays/s)")
@@ -28,10 +38,9 @@ def plot_ray_throughput_by_batch(ray_batches, csv_title, csv_stem):
 
 def plot_ray_throughput_by_unique_volumes_and_batch_size(ray_batches, csv_title, csv_stem):
     fig, ax = plt.subplots()
-    throughput_mrays = ray_batches["ray_throughput_rays_per_s"] / 1.0e6
-    batch_size_mrays = ray_batches["num_rays"] / 1.0e6
+    batch_size_mrays = ray_batches["batch_size_mrays"]
     batch_size_norm = Normalize(batch_size_mrays.min(), batch_size_mrays.max())
-    points = ax.scatter(ray_batches["num_unique_volumes"], throughput_mrays, c=batch_size_mrays, norm=batch_size_norm, s=10, alpha=0.5)
+    points = ax.scatter(ray_batches["num_unique_volumes"], ray_batches["ray_throughput_mrays_per_s"], c=batch_size_mrays, norm=batch_size_norm, s=10, alpha=0.5)
     ax.set_title(plot_title("Ray Throughput by Unique Volumes and Batch Size", csv_title))
     ax.set_xlabel("Unique volumes")
     ax.set_ylabel("Ray throughput (million rays/s)")
@@ -43,7 +52,7 @@ def plot_ray_throughput_by_unique_volumes_and_batch_size(ray_batches, csv_title,
 def plot_ray_trace_time_by_batch_size_and_unique_volumes(ray_batches, csv_title, csv_stem):
     fig, ax = plt.subplots()
     unique_volume_norm = Normalize(ray_batches["num_unique_volumes"].min(), ray_batches["num_unique_volumes"].max())
-    points = ax.scatter(ray_batches["num_rays"] / 1.0e6, ray_batches["ray_trace_s"], c=ray_batches["num_unique_volumes"], norm=unique_volume_norm, s=10, alpha=0.5)
+    points = ax.scatter(ray_batches["batch_size_mrays"], ray_batches["ray_trace_s"], c=ray_batches["num_unique_volumes"], norm=unique_volume_norm, s=10, alpha=0.5)
     ax.set_title(plot_title("Ray Trace Time by Batch Size and Unique Volumes", csv_title))
     ax.set_xlabel("Batch size (million rays)")
     ax.set_ylabel("Ray trace time (s)")
@@ -64,12 +73,11 @@ def plot_unique_volumes_by_batch(ray_batches, csv_title, csv_stem):
 
 def plot_ray_batch_summary(ray_batches, csv_title, csv_stem):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5), layout="constrained")
-    throughput_mrays = ray_batches["ray_throughput_rays_per_s"] / 1.0e6
-    batch_size_mrays = ray_batches["num_rays"] / 1.0e6
+    batch_size_mrays = ray_batches["batch_size_mrays"]
     batch_size_norm = Normalize(batch_size_mrays.min(), batch_size_mrays.max())
 
-    axes[0].scatter(ray_batches["batch_index"], throughput_mrays, c=batch_size_mrays, norm=batch_size_norm, s=10, alpha=0.5)
-    throughput_points = axes[1].scatter(ray_batches["num_unique_volumes"], throughput_mrays, c=batch_size_mrays, norm=batch_size_norm, s=10, alpha=0.5)
+    axes[0].scatter(ray_batches["batch_index"], ray_batches["ray_throughput_mrays_per_s"], c=batch_size_mrays, norm=batch_size_norm, s=10, alpha=0.5)
+    throughput_points = axes[1].scatter(ray_batches["num_unique_volumes"], ray_batches["ray_throughput_mrays_per_s"], c=batch_size_mrays, norm=batch_size_norm, s=10, alpha=0.5)
 
     axes[0].set_title(plot_title("Ray Throughput by Batch", csv_title))
     axes[0].set_xlabel("Batch index")
@@ -95,14 +103,14 @@ def main():
     csv_title = csv_path.name
     csv_stem = csv_path.stem
     ray_batches = pd.read_csv(args.csv)
-    minimum_num_rays = 0.5 * ray_batches["num_rays"].max() # filter out queue-draining batches
-    ray_batches = ray_batches[ray_batches["num_rays"] >= minimum_num_rays].copy()
+    processed_ray_batches = process_ray_batches(ray_batches)
 
-    plot_ray_throughput_by_batch(ray_batches, csv_title, csv_stem)
-    plot_ray_throughput_by_unique_volumes_and_batch_size(ray_batches, csv_title, csv_stem)
-    plot_ray_trace_time_by_batch_size_and_unique_volumes(ray_batches, csv_title, csv_stem)
-    plot_unique_volumes_by_batch(ray_batches, csv_title, csv_stem)
-    plot_ray_batch_summary(ray_batches, csv_title, csv_stem)
+    plot_ray_throughput_by_batch(processed_ray_batches, csv_title, csv_stem)
+    plot_ray_throughput_by_unique_volumes_and_batch_size(processed_ray_batches, csv_title, csv_stem)
+    plot_ray_trace_time_by_batch_size_and_unique_volumes(processed_ray_batches, csv_title, csv_stem)
+    plot_unique_volumes_by_batch(processed_ray_batches, csv_title, csv_stem)
+    plot_ray_batch_summary(processed_ray_batches, csv_title, csv_stem)
+
 
 if __name__ == "__main__":
     main()
