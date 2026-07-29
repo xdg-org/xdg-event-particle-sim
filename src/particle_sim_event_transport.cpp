@@ -45,6 +45,31 @@ std::int32_t count_unique_queued_volumes(const ParticleEventQueue::DD& advance_q
   return num_unique_volumes;
 }
 
+void count_particle_states(
+  const EventParticle* device_particles,
+  int num_particles,
+  std::uint64_t& particles_reached_max_events,
+  std::uint64_t& particles_dead,
+  int gpu_id)
+{
+  std::uint64_t reached_max_events = 0;
+  std::uint64_t dead = 0;
+
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(device_particles) \
+    reduction(+: reached_max_events, dead)
+  for (int i = 0; i < num_particles; ++i) {
+    if (device_particles[i].alive_) {
+      reached_max_events++;
+    } else {
+      dead++;
+    }
+  }
+
+  particles_reached_max_events = reached_max_events;
+  particles_dead = dead;
+}
+
 } // namespace
 
 void transport_particle_event_based(EventSimulationData& sim_data)
@@ -113,6 +138,12 @@ void transport_particle_event_based(EventSimulationData& sim_data)
       process_collision_events(sim_data);
     }
   }
+
+  count_particle_states(sim_data.device_particles,
+                        static_cast<int>(sim_data.n_particles_),
+                        sim_data.profiling.particles_reached_max_events,
+                        sim_data.profiling.particles_dead,
+                        sim_data.gpu_id);
 
   sim_data.advance_particle_queue.release();
   sim_data.surface_crossing_queue.release();
@@ -358,7 +389,6 @@ void process_collision_events(EventSimulationData& sim_data)
     p.collide();
 
     if (p.n_events_ >= max_events) {
-      p.alive_ = false;
       continue;
     }
 
@@ -398,7 +428,6 @@ void process_surface_crossing_events(EventSimulationData& sim_data)
     p.surface_cross();
 
     if (!p.alive_ || p.n_events_ >= max_events) {
-      p.alive_ = false;
       continue;
     }
 

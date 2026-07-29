@@ -34,6 +34,8 @@ struct EventSimulationData {
     std::uint64_t collision_calls {0};
     std::uint64_t surface_crossing_calls {0};
     std::uint64_t rays_traced {0};
+    std::uint64_t particles_reached_max_events {0};
+    std::uint64_t particles_dead {0};
   };
 
   struct RayBatchProfilingRecord {

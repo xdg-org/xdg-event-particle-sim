@@ -195,6 +195,8 @@ const std::vector<std::string> csv_columns {
   "n_particles",
   "max_events",
   "mean_free_path",
+  "particles_reached_max_events",
+  "particles_dead",
   "sort_rays_by_volume",
   "minimum_sort_items",
   "wall_time_s",
@@ -227,6 +229,8 @@ const std::vector<std::string> csv_values {
   fmt::format("{}", sim_data.n_particles_),
   fmt::format("{}", sim_data.max_events_),
   fmt::format("{}", sim_data.mfp_),
+  fmt::format("{}", profiling.particles_reached_max_events),
+  fmt::format("{}", profiling.particles_dead),
   fmt::format("{}", sim_data.sort_rays_by_volume_),
   fmt::format("{}", sim_data.minimum_sort_items_),
   fmt::format("{}", wall_time),
@@ -281,6 +285,8 @@ if (output_format == "csv") {
   std::cout << "  Surface crossings   : " << profiling.surface_crossing_s
             << " s (" << profiling.surface_crossing_calls << " calls)\n";
   std::cout << "----------------------------------------\n";
+  std::cout << "Reached max events    : " << profiling.particles_reached_max_events << "\n";
+  std::cout << "Particles dead        : " << profiling.particles_dead << "\n";
   std::cout << "Ray batches           : " << profiling.advance_calls << "\n";
   std::cout << "Rays traced           : "
             << fmt::format("{:.6e}", static_cast<double>(profiling.rays_traced)) << "\n";
