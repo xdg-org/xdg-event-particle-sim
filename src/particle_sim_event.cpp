@@ -19,6 +19,24 @@
 
 using namespace xdg;
 
+namespace {
+
+const char* event_type(const EventSimulationData::RayBatchProfilingRecord& batch)
+{
+  if (batch.num_initial_rays == batch.num_rays) {
+    return "initial";
+  }
+  if (batch.num_collision_rays == batch.num_rays) {
+    return "collision";
+  }
+  if (batch.num_surface_crossing_rays == batch.num_rays) {
+    return "surface_crossing";
+  }
+  return "mixed";
+}
+
+} // namespace
+
 int main(int argc, char** argv) {
 
 // argument parsing
@@ -164,16 +182,23 @@ if (sim_data.profile_rays_) {
                 ray_profile_output);
   }
 
-  ray_profiling_ofstream << "batch_index,num_rays,num_unique_volumes,volume_sort_s,ray_trace_s,"
-                            "ray_throughput_rays_per_s\n";
+  ray_profiling_ofstream
+    << "batch_index,num_rays,num_unique_volumes,event_type,num_initial_rays,"
+       "num_collision_rays,num_surface_crossing_rays,volume_sort_s,ray_trace_s,"
+       "ray_throughput_rays_per_s\n";
   for (const auto& batch : sim_data.host_ray_batch_records_) {
-    ray_profiling_ofstream << fmt::format("{},{},{},{:.17g},{:.17g},{:.17g}\n",
-                          batch.batch_index,
-                          batch.num_rays,
-                          batch.num_unique_volumes,
-                          batch.volume_sort_s,
-                          batch.ray_trace_s,
-                          batch.ray_throughput);
+    ray_profiling_ofstream
+      << fmt::format("{},{},{},{},{},{},{},{:.17g},{:.17g},{:.17g}\n",
+                     batch.batch_index,
+                     batch.num_rays,
+                     batch.num_unique_volumes,
+                     event_type(batch),
+                     batch.num_initial_rays,
+                     batch.num_collision_rays,
+                     batch.num_surface_crossing_rays,
+                     batch.volume_sort_s,
+                     batch.ray_trace_s,
+                     batch.ray_throughput);
   }
 }
 

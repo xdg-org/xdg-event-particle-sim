@@ -42,6 +42,9 @@ struct EventSimulationData {
     std::uint64_t batch_index {0};
     std::int32_t num_rays {0};
     std::int32_t num_unique_volumes {0};
+    std::int32_t num_initial_rays {0};
+    std::int32_t num_collision_rays {0};
+    std::int32_t num_surface_crossing_rays {0};
     double volume_sort_s {0.0};
     double ray_trace_s {0.0};
     double ray_throughput {0.0};
@@ -69,6 +72,9 @@ struct EventSimulationData {
   Profiling profiling;
 
   std::vector<RayBatchProfilingRecord> host_ray_batch_records_;
+  std::int32_t queued_initial_rays_ {0};
+  std::int32_t queued_collision_rays_ {0};
+  std::int32_t queued_surface_crossing_rays_ {0};
 
   // Last batch index that queried each volume MeshID.
   std::uint64_t* device_last_queried_batch_by_volume {nullptr};
