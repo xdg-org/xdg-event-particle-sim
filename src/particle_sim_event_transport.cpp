@@ -14,35 +14,35 @@ using namespace xdg;
 
 namespace {
 
-std::int32_t count_unique_queued_volumes(const ParticleEventQueue::DD& advance_queue,
+std::int32_t count_active_queued_volumes(const ParticleEventQueue::DD& advance_queue,
                                          int num_rays,
-                                         std::uint64_t* device_last_queried_batch_by_volume,
-                                         std::uint64_t batch_index,
+                                         std::uint64_t* device_last_queried_launch_by_volume,
+                                         std::uint64_t launch_index,
                                          int gpu_id)
 {
-  std::int32_t num_unique_volumes = 0;
+  std::int32_t num_active_volumes = 0;
 
   #pragma omp target teams distribute parallel for device(gpu_id) \
-    is_device_ptr(device_last_queried_batch_by_volume) \
-    map(tofrom: num_unique_volumes) \
-    firstprivate(advance_queue, batch_index)
+    is_device_ptr(device_last_queried_launch_by_volume) \
+    map(tofrom: num_active_volumes) \
+    firstprivate(advance_queue, launch_index)
   for (int i = 0; i < num_rays; ++i) {
     const MeshID volume = advance_queue.data[i].volume;
-    std::uint64_t previous_batch_index;
+    std::uint64_t previous_launch_index;
 
     #pragma omp atomic capture
     {
-      previous_batch_index = device_last_queried_batch_by_volume[volume];
-      device_last_queried_batch_by_volume[volume] = batch_index;
+      previous_launch_index = device_last_queried_launch_by_volume[volume];
+      device_last_queried_launch_by_volume[volume] = launch_index;
     }
 
-    if (previous_batch_index != batch_index) {
+    if (previous_launch_index != launch_index) {
       #pragma omp atomic update
-      num_unique_volumes++;
+      num_active_volumes++;
     }
   }
 
-  return num_unique_volumes;
+  return num_active_volumes;
 }
 
 void count_particle_states(
@@ -77,7 +77,7 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   const double xdg_setup_s = sim_data.profiling.xdg_setup_s;
   sim_data.profiling = {};
   sim_data.profiling.xdg_setup_s = xdg_setup_s;
-  sim_data.host_ray_batch_records_.clear();
+  sim_data.host_ray_launch_records_.clear();
 
   Timer transport_timer;
   transport_timer.start();
@@ -104,14 +104,14 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.surface_crossing_queue.allocate(sim_data.n_particles_, sim_data.gpu_id);
   sim_data.collision_queue.allocate(sim_data.n_particles_, sim_data.gpu_id);
 
-  if (sim_data.profile_rays_) {
+  if (sim_data.profile_ray_launches_) {
     const std::size_t table_size = static_cast<std::size_t>(sim_data.xdg_->mesh_manager()->next_volume_id());
     const std::size_t table_bytes = table_size * sizeof(std::uint64_t);
     const std::vector<std::uint64_t> initial_values(table_size, std::numeric_limits<std::uint64_t>::max());
 
-    sim_data.device_last_queried_batch_by_volume =
+    sim_data.device_last_queried_launch_by_volume =
       static_cast<std::uint64_t*>(omp_target_alloc(table_bytes, sim_data.gpu_id));
-    omp_target_memcpy(sim_data.device_last_queried_batch_by_volume,
+    omp_target_memcpy(sim_data.device_last_queried_launch_by_volume,
                       initial_values.data(),
                       table_bytes,
                       0,
@@ -149,9 +149,9 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.surface_crossing_queue.release();
   sim_data.collision_queue.release();
 
-  if (sim_data.device_last_queried_batch_by_volume) {
-    omp_target_free(sim_data.device_last_queried_batch_by_volume, sim_data.gpu_id);
-    sim_data.device_last_queried_batch_by_volume = nullptr;
+  if (sim_data.device_last_queried_launch_by_volume) {
+    omp_target_free(sim_data.device_last_queried_launch_by_volume, sim_data.gpu_id);
+    sim_data.device_last_queried_launch_by_volume = nullptr;
   }
 
   omp_target_free(sim_data.device_particles, sim_data.gpu_id);
@@ -214,7 +214,7 @@ void process_advance_particle_events(EventSimulationData& sim_data)
 
   Timer total_timer;
   total_timer.start();
-  sim_data.profiling.advance_calls++;
+  sim_data.profiling.ray_launches++;
   sim_data.profiling.rays_traced += static_cast<std::uint64_t>(n_advance);
 
   EventParticle* device_particles = sim_data.device_particles;
@@ -224,7 +224,7 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   auto collision_queue = sim_data.collision_queue.get_device_data();
   const double mfp = sim_data.mfp_;
   const int gpu_id = sim_data.gpu_id;
-  double batch_volume_sort_s = 0.0;
+  double launch_volume_sort_s = 0.0;
 
   Timer timer;
 
@@ -234,8 +234,8 @@ void process_advance_particle_events(EventSimulationData& sim_data)
       timer.start();
       thrust_sort_by_volume(advance_queue.data, advance_queue.data + n_advance, gpu_id);
       timer.stop();
-      batch_volume_sort_s = timer.elapsed();
-      sim_data.profiling.advance_sort_rays_s += batch_volume_sort_s;
+      launch_volume_sort_s = timer.elapsed();
+      sim_data.profiling.advance_sort_rays_s += launch_volume_sort_s;
       timer.reset();
     }
 #else
@@ -285,34 +285,34 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   timer.start();
   sim_data.xdg_->ray_fire_batch(active_hits);
   timer.stop();
-  const double batch_ray_trace_s = timer.elapsed();
-  sim_data.profiling.total_ray_trace_s += batch_ray_trace_s;
+  const double launch_ray_trace_s = timer.elapsed();
+  sim_data.profiling.total_ray_trace_s += launch_ray_trace_s;
 
-  double batch_ray_throughput = 0.0;
-  if (batch_ray_trace_s > 0.0) {
-    batch_ray_throughput = static_cast<double>(n_advance) / batch_ray_trace_s;
-    const double batch_count = static_cast<double>(sim_data.profiling.advance_calls);
-    sim_data.profiling.average_batch_ray_throughput +=
-      (batch_ray_throughput - sim_data.profiling.average_batch_ray_throughput) / batch_count;
+  double launch_ray_throughput = 0.0;
+  if (launch_ray_trace_s > 0.0) {
+    launch_ray_throughput = static_cast<double>(n_advance) / launch_ray_trace_s;
+    const double launch_count = static_cast<double>(sim_data.profiling.ray_launches);
+    sim_data.profiling.average_ray_launch_throughput +=
+      (launch_ray_throughput - sim_data.profiling.average_ray_launch_throughput) / launch_count;
   }
 
   timer.reset();
 
-  if (sim_data.profile_rays_) {
-    const std::uint64_t batch_index = sim_data.profiling.advance_calls - 1;
-    const std::int32_t num_unique_volumes = count_unique_queued_volumes(advance_queue,
+  if (sim_data.profile_ray_launches_) {
+    const std::uint64_t launch_index = sim_data.profiling.ray_launches - 1;
+    const std::int32_t num_active_volumes = count_active_queued_volumes(advance_queue,
                                                                         n_advance,
-                                                                        sim_data.device_last_queried_batch_by_volume,
-                                                                        batch_index,
+                                                                        sim_data.device_last_queried_launch_by_volume,
+                                                                        launch_index,
                                                                         gpu_id);
 
-    sim_data.host_ray_batch_records_.push_back({
-      batch_index,
+    sim_data.host_ray_launch_records_.push_back({
+      launch_index,
       n_advance,
-      num_unique_volumes,
-      batch_volume_sort_s,
-      batch_ray_trace_s,
-      batch_ray_throughput
+      num_active_volumes,
+      launch_volume_sort_s,
+      launch_ray_trace_s,
+      launch_ray_throughput
     });
   }
 
