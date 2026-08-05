@@ -62,9 +62,9 @@ args.add_argument("-p", "--enable-profiling-ray-launch")
     .implicit_value(true)
     .help("Collect per-launch ray tracing profiling data");
 
-args.add_argument("-o", "--ray-profile-output")
-    .default_value("ray-batches.csv")
-    .help("Output file for per-batch ray tracing profiling data");
+args.add_argument("-o", "--ray-launch-profile-output")
+    .default_value("ray-launches.csv")
+    .help("Output file for per-launch ray tracing profiling data");
 
 args.add_argument("-s", "--sort-vol", "--sort-by-volume")
     .default_value(false)
@@ -143,7 +143,7 @@ for (MeshID surface : mm->surfaces()) {
 // update the mean free path
 sim_data.mfp_ = args.get<double>("--mfp");
 
-sim_data.profile_rays_ = args.get<bool>("--enable-profiling-ray-launch");
+sim_data.profile_ray_launches_ = args.get<bool>("--enable-profiling-ray-launch");
 sim_data.sort_rays_by_volume_ = args.get<bool>("--sort-by-volume");
 sim_data.minimum_sort_items_ = args.get<int>("--minimum-sort-items");
 sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
@@ -155,25 +155,25 @@ transport_particle_event_based(sim_data);
 wall_timer.stop();
 const double wall_time = wall_timer.elapsed();
 
-if (sim_data.profile_rays_) {
-  const std::string ray_profile_output =
-    args.get<std::string>("--ray-profile-output");
-  std::ofstream ray_profiling_ofstream(ray_profile_output);
+if (sim_data.profile_ray_launches_) {
+  const std::string ray_launch_profile_output =
+    args.get<std::string>("--ray-launch-profile-output");
+  std::ofstream ray_profiling_ofstream(ray_launch_profile_output);
   if (!ray_profiling_ofstream) {
-    fatal_error("Failed to open ray batch profiling output '{}'.",
-                ray_profile_output);
+    fatal_error("Failed to open ray launch profiling output '{}'.",
+                ray_launch_profile_output);
   }
 
-  ray_profiling_ofstream << "batch_index,num_rays,num_unique_volumes,volume_sort_s,ray_trace_s,"
+  ray_profiling_ofstream << "launch_index,num_rays,num_active_volumes,volume_sort_s,ray_trace_s,"
                             "ray_throughput_rays_per_s\n";
-  for (const auto& batch : sim_data.host_ray_batch_records_) {
+  for (const auto& launch : sim_data.host_ray_launch_records_) {
     ray_profiling_ofstream << fmt::format("{},{},{},{:.17g},{:.17g},{:.17g}\n",
-                          batch.batch_index,
-                          batch.num_rays,
-                          batch.num_unique_volumes,
-                          batch.volume_sort_s,
-                          batch.ray_trace_s,
-                          batch.ray_throughput);
+                          launch.launch_index,
+                          launch.num_rays,
+                          launch.num_active_volumes,
+                          launch.volume_sort_s,
+                          launch.ray_trace_s,
+                          launch.ray_throughput);
   }
 }
 
@@ -209,12 +209,12 @@ const std::vector<std::string> csv_columns {
   "profile_advance_update_particles_s",
   "profile_collision_s",
   "profile_surface_crossing_s",
-  "profile_ray_batches",
+  "profile_ray_launches",
   "profile_collision_calls",
   "profile_surface_crossing_calls",
   "profile_rays_traced",
   "profile_total_ray_throughput_rays_per_s",
-  "profile_average_batch_ray_throughput_rays_per_s"
+  "profile_average_ray_launch_throughput_rays_per_s"
 };
 
 const std::vector<std::string> csv_values {
@@ -243,12 +243,12 @@ const std::vector<std::string> csv_values {
   fmt::format("{}", profiling.advance_update_particles_s),
   fmt::format("{}", profiling.collision_s),
   fmt::format("{}", profiling.surface_crossing_s),
-  fmt::format("{}", profiling.advance_calls),
+  fmt::format("{}", profiling.ray_launches),
   fmt::format("{}", profiling.collision_calls),
   fmt::format("{}", profiling.surface_crossing_calls),
   fmt::format("{}", profiling.rays_traced),
   fmt::format("{}", total_ray_throughput),
-  fmt::format("{}", profiling.average_batch_ray_throughput)
+  fmt::format("{}", profiling.average_ray_launch_throughput)
 };
 
 if (output_format == "csv") {
@@ -275,7 +275,7 @@ if (output_format == "csv") {
   std::cout << "XDG setup             : " << profiling.xdg_setup_s << " s\n";
   std::cout << "Transport time        : " << profiling.transport_s << " s\n";
   std::cout << "Advance total         : " << profiling.advance_total_s
-            << " s (" << profiling.advance_calls << " calls)\n";
+            << " s (" << profiling.ray_launches << " ray launches)\n";
   std::cout << "  Sort rays           : " << profiling.advance_sort_rays_s << " s\n";
   std::cout << "  Pack rays           : " << profiling.advance_pack_rays_s << " s\n";
   std::cout << "  Ray trace           : " << profiling.total_ray_trace_s << " s\n";
@@ -287,11 +287,11 @@ if (output_format == "csv") {
   std::cout << "----------------------------------------\n";
   std::cout << "Reached max events    : " << profiling.particles_reached_max_events << "\n";
   std::cout << "Particles dead        : " << profiling.particles_dead << "\n";
-  std::cout << "Ray batches           : " << profiling.advance_calls << "\n";
+  std::cout << "Ray launches          : " << profiling.ray_launches << "\n";
   std::cout << "Rays traced           : "
             << fmt::format("{:.6e}", static_cast<double>(profiling.rays_traced)) << "\n";
-  std::cout << "Avg batch throughput  : "
-            << profiling.average_batch_ray_throughput << " rays/s\n";
+  std::cout << "Avg launch throughput : "
+            << profiling.average_ray_launch_throughput << " rays/s\n";
   std::cout << "Total ray throughput  : " << total_ray_throughput << " rays/s\n";
   std::cout << "----------------------------------------\n";
 }

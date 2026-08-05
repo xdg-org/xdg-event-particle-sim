@@ -50,26 +50,26 @@ Run example:
 
 The `--sort-by-volume` option enables the Thrust queue sort at runtime.
 
-## Plotting Ray Batch Data
+## Plotting Ray Launch Data
 
-The `plot_ray_batches.py` script reads the per-launch CSV written by
+The `plot_ray_launches.py` script reads the per-launch CSV written by
 `--enable-profiling-ray-launch` and produces basic ray-tracing performance
 plots.
 
-Generate batch data:
+Generate ray launch data:
 
 ```bash
 ./build/llvm_ada/xdg-particle-sim-event <mesh.h5m> \
   --mesh-library MOAB \
   --rt-library CUBQL \
   --enable-profiling-ray-launch \
-  --ray-profile-output ray-batches.csv
+  --ray-launch-profile-output ray-launches.csv
 ```
 
 Then run:
 
 ```bash
-python3 plot_ray_batches.py ray-batches.csv
+python3 plot_ray_launches.py ray-launches.csv
 ```
 
 ## Mean Free Path Sweeps
@@ -98,8 +98,8 @@ mfp_sweep/mean_free_path_sweep_ray_performance.png
 mfp_sweep/mean_free_path_sweep_workload.png
 ```
 
-With `--profile-ray-launches`, the script also retains a ray-batch CSV and
-generates the existing ray-batch summary plot for every mean free path.
+With `--profile-ray-launches`, the script also retains a ray-launch CSV and
+generates the existing ray-launch summary plot for every mean free path.
 
 Plots can be regenerated without rerunning transport:
 
