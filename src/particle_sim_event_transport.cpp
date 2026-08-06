@@ -284,7 +284,7 @@ void process_init_events(EventSimulationData& sim_data)
     u.z = direction[2];
 
     device_particles[i].initialize(static_cast<uint32_t>(i), rng_state, r, u, volume);
-    advance_queue.thread_safe_append({static_cast<uint32_t>(i), volume});
+    advance_queue.thread_safe_append({static_cast<uint32_t>(i), volume, get_direction_octant(u.x, u.y, u.z)});
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
@@ -311,22 +311,29 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   auto collision_queue = sim_data.collision_queue.get_device_data();
   const double mfp = sim_data.mfp_;
   const int gpu_id = sim_data.gpu_id;
-  double launch_volume_sort_s = 0.0;
+  double launch_ray_sort_s = 0.0;
 
   Timer timer;
 
-  if (sim_data.sort_rays_by_volume_) {
+  const bool sorting_requested =
+    sim_data.sort_rays_by_volume_ || sim_data.sort_rays_by_direction_;
+
+  if (sorting_requested) {
 #ifdef EVENT_SIM_THRUST_SORT
-    if (n_advance > sim_data.minimum_sort_items_) {
+    if (n_advance >= sim_data.minimum_sort_items_) {
       timer.start();
-      thrust_sort_by_volume(advance_queue.data, advance_queue.data + n_advance, gpu_id);
+      if (sim_data.sort_rays_by_volume_) {
+        thrust_sort_by_volume(advance_queue.data, advance_queue.data + n_advance, gpu_id);
+      } else {
+        thrust_sort_by_direction(advance_queue.data, advance_queue.data + n_advance, gpu_id);
+      }
       timer.stop();
-      launch_volume_sort_s = timer.elapsed();
-      sim_data.profiling.advance_sort_rays_s += launch_volume_sort_s;
+      launch_ray_sort_s = timer.elapsed();
+      sim_data.profiling.advance_sort_rays_s += launch_ray_sort_s;
       timer.reset();
     }
 #else
-    fatal_error("Volume sorting requested, but this build does not include a Thrust sorting backend.");
+    fatal_error("Particle sorting requested, but this build does not include a Thrust sorting backend.");
 #endif
   }
 
@@ -397,7 +404,7 @@ void process_advance_particle_events(EventSimulationData& sim_data)
       launch_index,
       n_advance,
       num_active_volumes,
-      launch_volume_sort_s,
+      launch_ray_sort_s,
       launch_ray_trace_s,
       launch_ray_throughput
     });
@@ -507,7 +514,7 @@ void process_collision_events(EventSimulationData& sim_data)
       continue;
     }
 
-    advance_queue.thread_safe_append({particle_idx, p.volume_});
+    advance_queue.thread_safe_append({particle_idx, p.volume_, get_direction_octant(p.u_.x, p.u_.y, p.u_.z)});
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
@@ -546,7 +553,7 @@ void process_surface_crossing_events(EventSimulationData& sim_data)
       continue;
     }
 
-    advance_queue.thread_safe_append({particle_idx, p.volume_});
+    advance_queue.thread_safe_append({particle_idx, p.volume_, get_direction_octant(p.u_.x, p.u_.y, p.u_.z)});
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();

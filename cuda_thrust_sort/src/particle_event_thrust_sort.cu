@@ -20,3 +20,18 @@ void thrust_sort_by_volume(EventQueueItem* begin, EventQueueItem* end, int devic
     throw std::runtime_error(cudaGetErrorString(error));
   }
 }
+
+void thrust_sort_by_direction(EventQueueItem* begin, EventQueueItem* end, int device_id)
+{
+  cudaError_t error = cudaSetDevice(device_id);
+  if (error != cudaSuccess) {
+    throw std::runtime_error(cudaGetErrorString(error));
+  }
+
+  thrust::sort(thrust::device, begin, end, DirectionCompare {});
+
+  error = cudaDeviceSynchronize();
+  if (error != cudaSuccess) {
+    throw std::runtime_error(cudaGetErrorString(error));
+  }
+}

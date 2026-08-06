@@ -81,9 +81,14 @@ int main(int argc, char** argv) {
       .implicit_value(true)
       .help("Sort each advance queue by volume on the device before ray packing");
 
+  args.add_argument("-sd", "--sort-dir", "--sort-by-direction")
+      .default_value(false)
+      .implicit_value(true)
+      .help("Sort each advance queue by direction octant on the device before ray packing");
+
   args.add_argument("-i", "--nsort", "--minimum-sort-items")
       .default_value(20000)
-      .help("Minimum advance queue size required for volume sorting").scan<'i', int>();
+      .help("Minimum advance queue size required for particle sorting").scan<'i', int>();
 
   args.add_argument("-d", "--exit-on-bvh-failure")
       .default_value(false)
@@ -96,6 +101,27 @@ int main(int argc, char** argv) {
   catch (const std::runtime_error& err) {
     std::cout << err.what() << std::endl;
     std::cout << args;
+    return 1;
+  }
+
+  const bool sort_rays_by_volume = args.get<bool>("--sort-by-volume");
+  const bool sort_rays_by_direction = args.get<bool>("--sort-by-direction");
+  const int minimum_sort_items = args.get<int>("--minimum-sort-items");
+
+  if (sort_rays_by_volume && sort_rays_by_direction) {
+    std::cerr << "Volume and direction sorting cannot be enabled together.\n";
+    return 1;
+  }
+
+#ifndef EVENT_SIM_THRUST_SORT
+  if (sort_rays_by_volume || sort_rays_by_direction) {
+    std::cerr << "Particle sorting requested, but this build does not include a Thrust sorting backend.\n";
+    return 1;
+  }
+#endif
+
+  if (minimum_sort_items < 0) {
+    std::cerr << "Minimum sort items must be non-negative.\n";
     return 1;
   }
 
@@ -173,8 +199,9 @@ int main(int argc, char** argv) {
   sim_data.mfp_ = args.get<double>("--mfp");
 
   sim_data.profile_ray_launches_ = args.get<bool>("--enable-profiling-ray-launch");
-  sim_data.sort_rays_by_volume_ = args.get<bool>("--sort-by-volume");
-  sim_data.minimum_sort_items_ = args.get<int>("--minimum-sort-items");
+  sim_data.sort_rays_by_volume_ = sort_rays_by_volume;
+  sim_data.sort_rays_by_direction_ = sort_rays_by_direction;
+  sim_data.minimum_sort_items_ = minimum_sort_items;
   sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
   sim_data.n_particles_ = args.get<uint32_t>("--n-particles");
   sim_data.max_events_ = args.get<uint32_t>("--max-events");

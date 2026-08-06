@@ -53,7 +53,7 @@ struct EventSimulationData {
     std::uint64_t launch_index {0};
     std::int32_t num_rays {0};
     std::int32_t num_active_volumes {0};
-    double volume_sort_s {0.0};
+    double ray_sort_s {0.0};
     double ray_trace_s {0.0};
     double ray_throughput {0.0};
   };
@@ -65,6 +65,7 @@ struct EventSimulationData {
   uint32_t max_events_ {1000};
   bool profile_ray_launches_ {false};
   bool sort_rays_by_volume_ {false};
+  bool sort_rays_by_direction_ {false};
   int minimum_sort_items_ {20000};
   bool implicit_complement_is_graveyard_ {false};
   std::vector<double> cell_tracks;
@@ -93,6 +94,5 @@ struct EventSimulationData {
   uint32_t max_lost_particle_records_ {1024};
   std::vector<LostParticleState> host_lost_particles_;
 };
-
 
 #endif

@@ -23,6 +23,9 @@ void write_summary(std::ostream& output,
     profiling.total_ray_trace_s > 0.0
       ? static_cast<double>(profiling.rays_traced) / profiling.total_ray_trace_s
       : 0.0;
+  const std::string sorting_mode = sim_data.sort_rays_by_volume_
+    ? "volume"
+    : (sim_data.sort_rays_by_direction_ ? "direction" : "disabled");
 
   // Rank cell tracks by track length in descending order
   const auto& mm = sim_data.xdg_->mesh_manager();
@@ -69,7 +72,9 @@ void write_summary(std::ostream& output,
       "particles_reached_max_events",
       "particles_dead",
       "particles_lost",
+      "sorting_mode",
       "sort_rays_by_volume",
+      "sort_rays_by_direction",
       "minimum_sort_items",
       "wall_time_s",
       "profile_xdg_setup_s",
@@ -106,7 +111,9 @@ void write_summary(std::ostream& output,
       fmt::format("{}", profiling.particles_reached_max_events),
       fmt::format("{}", profiling.particles_dead),
       fmt::format("{}", profiling.particles_lost),
+      sorting_mode,
       fmt::format("{}", sim_data.sort_rays_by_volume_),
+      fmt::format("{}", sim_data.sort_rays_by_direction_),
       fmt::format("{}", sim_data.minimum_sort_items_),
       fmt::format("{}", metadata.wall_time_s),
       fmt::format("{}", profiling.xdg_setup_s),
@@ -146,8 +153,7 @@ void write_summary(std::ostream& output,
   output << "Particles             : " << sim_data.n_particles_ << "\n";
   output << "Max events/particle   : " << sim_data.max_events_ << "\n";
   output << "Mean free path        : " << sim_data.mfp_ << "\n";
-  output << "Volume sorting        : "
-         << (sim_data.sort_rays_by_volume_ ? "enabled" : "disabled") << "\n";
+  output << "Sorting mode          : " << sorting_mode << "\n";
   output << "Minimum sort items    : " << sim_data.minimum_sort_items_ << "\n";
   output << "----------------------------------------\n";
   output << "Full wall-clock time  : " << metadata.wall_time_s << " s\n";
@@ -191,14 +197,14 @@ void write_ray_launch_profile_csv(const std::string& filename,
     fatal_error("Failed to open ray launch profiling output '{}'.", filename);
   }
 
-  output << "launch_index,num_rays,num_active_volumes,volume_sort_s,ray_trace_s,"
+  output << "launch_index,num_rays,num_active_volumes,ray_sort_s,ray_trace_s,"
             "ray_throughput_rays_per_s\n";
   for (const auto& launch : sim_data.host_ray_launch_records_) {
     output << fmt::format("{},{},{},{:.17g},{:.17g},{:.17g}\n",
                           launch.launch_index,
                           launch.num_rays,
                           launch.num_active_volumes,
-                          launch.volume_sort_s,
+                          launch.ray_sort_s,
                           launch.ray_trace_s,
                           launch.ray_throughput);
   }

@@ -3,8 +3,8 @@
 A basic GPU event-based pseudo particle transport simulation application for
 mocking neutral-particle transport against CAD models with the XDG library. This
 application acts as a mock interface for XDG's GPU API for future particle
-transport codes wishing to use XDG for CAD transport. GPU sorting of volumes is 
-provided via CUDA thrust or HIP thrust sorting. 
+transport codes wishing to use XDG for CAD transport. GPU sorting of event
+queues by volume or direction octant is provided through CUDA or HIP Thrust.
 
 ## Building
 
@@ -49,6 +49,9 @@ Run example:
 ```
 
 The `--sort-by-volume` option enables the Thrust queue sort at runtime.
+Use `--sort-by-direction` to sort by direction octant instead. These modes are
+mutually exclusive; compound volume-and-direction ordering is not yet
+implemented.
 
 ## Plotting Ray Launch Data
 

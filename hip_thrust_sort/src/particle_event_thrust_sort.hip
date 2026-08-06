@@ -20,3 +20,18 @@ void thrust_sort_by_volume(EventQueueItem* begin, EventQueueItem* end, int devic
     throw std::runtime_error(hipGetErrorString(error));
   }
 }
+
+void thrust_sort_by_direction(EventQueueItem* begin, EventQueueItem* end, int device_id)
+{
+  hipError_t error = hipSetDevice(device_id);
+  if (error != hipSuccess) {
+    throw std::runtime_error(hipGetErrorString(error));
+  }
+
+  thrust::sort(thrust::device, begin, end, DirectionCompare {});
+
+  error = hipDeviceSynchronize();
+  if (error != hipSuccess) {
+    throw std::runtime_error(hipGetErrorString(error));
+  }
+}
