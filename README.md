@@ -6,6 +6,14 @@ application acts as a mock interface for XDG's GPU API for future particle
 transport codes wishing to use XDG for CAD transport. GPU sorting of volumes is 
 provided via CUDA thrust or HIP thrust sorting. 
 
+## Demo
+
+<video src="EventSimDemo.mp4" controls width="100%">
+  View the demo video: EventSimDemo.mp4
+</video>
+
+[View the demo video](EventSimDemo.mp4)
+
 ## Building
 
 This application is built against an installed XDG package. Build and install
