@@ -8,9 +8,9 @@ provided via CUDA thrust or HIP thrust sorting.
 
 ## Demo
 
-[![Event simulation demo preview](EventSimDemoPreview.gif)](EventSimDemo.mp4)
+[![Event simulation demo preview](manim/EventSimDemoPreview.gif)](manim/EventSimDemo.mp4)
 
-[Watch the full demo video](EventSimDemo.mp4)
+[Watch the full demo video](manim/EventSimDemo.mp4)
 
 ## Building
 
