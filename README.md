@@ -7,6 +7,14 @@ transport codes wishing to use XDG for CAD transport. GPU sorting of event
 queues by volume, direction octant, or compound combinations of the two is
 provided through CUDA or HIP Thrust.
 
+## Demo
+
+<video src="EventSimDemo.mp4" controls width="100%">
+  View the demo video: EventSimDemo.mp4
+</video>
+
+[View the demo video](EventSimDemo.mp4)
+
 ## Building
 
 This application is built against an installed XDG package. Build and install
