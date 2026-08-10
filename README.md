@@ -9,11 +9,9 @@ provided through CUDA or HIP Thrust.
 
 ## Demo
 
-<video src="EventSimDemo.mp4" controls width="100%">
-  View the demo video: EventSimDemo.mp4
-</video>
+[![Event simulation demo preview](EventSimDemoPreview.gif)](EventSimDemo.mp4)
 
-[View the demo video](EventSimDemo.mp4)
+[Watch the full demo video](EventSimDemo.mp4)
 
 ## Building
 
