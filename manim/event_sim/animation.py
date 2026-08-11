@@ -16,6 +16,7 @@ class EventShowcase:
     context: VGroup
     updated_context: VGroup
     replay_particles: VGroup
+    replay_arrows: VGroup
     replay_paths: tuple[VMobject, ...]
     panel: EventPanel
     process: ProcessDiagram
@@ -25,7 +26,9 @@ class EventShowcase:
     def moving_group(self):
         return Group(
             self.replay_particles,
+            self.replay_arrows,
             self.process.particles,
+            self.process.arrows,
             self.process.paths,
             self.panel.ray,
             self.panel.pulse,
@@ -33,12 +36,18 @@ class EventShowcase:
             self.panel.traversal.pulse,
         )
 
+    @property
+    def replay_visuals(self):
+        return Group(self.replay_particles, self.replay_arrows)
+
 
 class EventSimulation:
     """Own shared scene state and play the five narrative phases."""
 
     particle_color = RED_A
     particle_radius = 0.055
+    direction_arrow_length = 0.28
+    direction_arrow_gap = 0.07
     left_scale = 0.5
     left_shift = 3.5 * LEFT
     left_panel_center = 3.5 * LEFT
@@ -52,6 +61,8 @@ class EventSimulation:
         self.volume_faces = VGroup()
         self.volume_edges = VGroup()
         self.particles = Group()
+        self.particle_arrows = VGroup()
+        self.particle_directions = []
         self.overview_frame_width = 0
         self.overview_frame_center = ORIGIN
 
@@ -100,7 +111,18 @@ class EventSimulation:
             ).move_to(position)
             for position in model.initial_positions
         ))
-        scene.add(self.volume_faces, self.particles, self.volume_edges)
+        self.particle_directions = [RIGHT.copy() for _ in range(model.particle_count)]
+        self.set_particle_directions(range(model.particle_count), 0)
+        self.particle_arrows = VGroup(*(
+            self.make_particle_arrow(index)
+            for index in range(model.particle_count)
+        )).deactivate_depth_test()
+        scene.add(
+            self.volume_faces,
+            self.particles,
+            self.volume_edges,
+            self.particle_arrows,
+        )
         scene.play(
             FadeIn(self.volume_faces),
             LaggedStart(
@@ -111,6 +133,79 @@ class EventSimulation:
         )
         self.overview_frame_width = scene.camera.frame.get_width()
         self.overview_frame_center = scene.camera.frame.get_center().copy()
+
+    def make_particle_arrow(self, index):
+        arrow = StrokeArrow(
+            ORIGIN,
+            RIGHT,
+            stroke_color=YELLOW,
+            stroke_width=3,
+            buff=0,
+            tip_width_ratio=4,
+        )
+        self.position_particle_arrow(arrow, index)
+        arrow.add_updater(
+            lambda direction_arrow, index=index: self.position_particle_arrow(
+                direction_arrow, index
+            )
+        )
+        return arrow
+
+    def position_particle_arrow(self, arrow, index):
+        particle = self.particles[index]
+        direction = self.particle_directions[index]
+        scale = particle.get_width() / (2 * self.particle_radius)
+        center = particle.get_center()
+        start = center + scale * self.direction_arrow_gap * direction
+        end = center + scale * self.direction_arrow_length * direction
+        arrow.put_start_and_end_on(start, end)
+        return arrow
+
+    def set_particle_directions(self, indices, start_step):
+        for index in indices:
+            points = self.model.sampled_path_points[index]
+            direction = points[start_step + 1] - points[start_step]
+            self.particle_directions[index] = direction / np.linalg.norm(direction)
+
+    def particle_direction_animation(self, index, target_direction):
+        target_direction = target_direction / np.linalg.norm(target_direction)
+        start_direction = self.particle_directions[index].copy()
+        start_angle = np.arctan2(start_direction[1], start_direction[0])
+        target_angle = np.arctan2(target_direction[1], target_direction[0])
+        angle_delta = (target_angle - start_angle + PI) % TAU - PI
+
+        def update(arrow, alpha):
+            angle = start_angle + alpha * angle_delta
+            self.particle_directions[index] = np.array((
+                np.cos(angle),
+                np.sin(angle),
+                0.0,
+            ))
+            self.position_particle_arrow(arrow, index)
+
+        return UpdateFromAlphaFunc(self.particle_arrows[index], update)
+
+    def particle_direction_animations(self, indices, start_step):
+        return tuple(
+            self.particle_direction_animation(
+                index,
+                self.model.sampled_path_points[index][start_step + 1]
+                - self.model.sampled_path_points[index][start_step],
+            )
+            for index in indices
+        )
+
+    def particle_direction_animation_toward(self, index, start, end):
+        return self.particle_direction_animation(index, end - start)
+
+    def particle_visuals(self, indices=None):
+        if indices is None:
+            indices = range(self.model.particle_count)
+        return Group(*(
+            visual
+            for index in indices
+            for visual in (self.particles[index], self.particle_arrows[index])
+        ))
 
     def left_point(self, point):
         return self.left_scale * point + self.left_shift
@@ -200,7 +295,12 @@ class EventSimulation:
         scene.play(FadeIn(summary), run_time=0.8)
         scene.wait(1.8)
 
-        simulation = Group(self.volume_faces, self.particles, self.volume_edges)
+        simulation = Group(
+            self.volume_faces,
+            self.particles,
+            self.volume_edges,
+            self.particle_arrows,
+        )
         divider = Line(
             3.5 * UP,
             3.5 * DOWN,
@@ -284,6 +384,13 @@ class EventSimulation:
             )
             path = path_type(*points) if collision else path_type().set_points_as_corners(points)
             replay_paths.append(path)
+        replay_arrows = VGroup(*(
+            self.factory.attached_direction_arrow(
+                particle,
+                path.get_end() - path.get_start(),
+            )
+            for particle, path in zip(replay_particles, replay_paths)
+        )).deactivate_depth_test()
 
         source_volume = model.volume_index(model.shared_start)
         panel = self.factory.event_panel(
@@ -317,6 +424,7 @@ class EventSimulation:
             context,
             updated_context,
             replay_particles,
+            replay_arrows,
             tuple(replay_paths),
             panel,
             process,
@@ -324,10 +432,20 @@ class EventSimulation:
         )
 
     def reset_showcase_particles(self, showcase):
-        for dot, path in zip(showcase.replay_particles, showcase.replay_paths):
+        for dot, arrow, path in zip(
+            showcase.replay_particles,
+            showcase.replay_arrows,
+            showcase.replay_paths,
+        ):
             dot.move_to(path.get_start())
-        for dot, path in zip(showcase.process.particles, showcase.process.paths):
+            arrow.update()
+        for dot, arrow, path in zip(
+            showcase.process.particles,
+            showcase.process.arrows,
+            showcase.process.paths,
+        ):
             dot.move_to(path.get_start())
+            arrow.update()
 
     def showcase_motion(self, showcase, include_bvh=False):
         animations = [
@@ -340,7 +458,7 @@ class EventSimulation:
             ),
             *(ShowCreation(path) for path in showcase.process.paths),
             *(
-                MoveAlongPath(dot, path)
+                MoveAlongPath(dot, path.copy())
                 for dot, path in zip(
                     showcase.process.particles,
                     showcase.process.paths,
@@ -364,8 +482,9 @@ class EventSimulation:
         panel = showcase.panel
         process = showcase.process
         scene.play(
-            FadeOut(showcase.replay_particles),
+            FadeOut(showcase.replay_visuals),
             FadeOut(process.particles),
+            FadeOut(process.arrows),
             FadeOut(process.paths),
             FadeOut(panel.ray),
             FadeOut(panel.pulse),
@@ -377,8 +496,9 @@ class EventSimulation:
         panel.pulse.move_to(panel.ray_path.get_start())
         panel.traversal.pulse.move_to(panel.traversal.path.get_start())
         scene.play(
-            FadeIn(showcase.replay_particles),
+            FadeIn(showcase.replay_visuals),
             FadeIn(process.particles),
+            FadeIn(process.arrows),
             FadeIn(panel.pulse),
             FadeIn(panel.traversal.pulse),
             run_time=0.3,
@@ -400,13 +520,13 @@ class EventSimulation:
         )
         scene.wait(0.8)
 
-        scene.play(FadeIn(showcase.replay_particles), run_time=0.35)
+        scene.play(FadeIn(showcase.replay_visuals), run_time=0.35)
         scene.play(*(
             MoveAlongPath(dot, path)
             for dot, path in zip(showcase.replay_particles, showcase.replay_paths)
         ), run_time=2.4, rate_func=linear)
         scene.wait(1.0)
-        scene.play(FadeOut(showcase.replay_particles), run_time=0.35)
+        scene.play(FadeOut(showcase.replay_visuals), run_time=0.35)
         self.reset_showcase_particles(showcase)
 
         scene.play(
@@ -414,7 +534,8 @@ class EventSimulation:
             FadeIn(process.domain),
             FadeIn(process.label),
             FadeIn(process.particles),
-            FadeIn(showcase.replay_particles),
+            FadeIn(process.arrows),
+            FadeIn(showcase.replay_visuals),
             run_time=0.9,
         )
         scene.play(
@@ -429,8 +550,9 @@ class EventSimulation:
         )
         scene.wait(1.0)
         scene.play(
-            FadeOut(showcase.replay_particles),
+            FadeOut(showcase.replay_visuals),
             FadeOut(process.particles),
+            FadeOut(process.arrows),
             FadeOut(process.paths),
             run_time=0.35,
         )
@@ -439,8 +561,9 @@ class EventSimulation:
         scene.play(
             FadeIn(panel.bvh),
             FadeIn(panel.tree),
-            FadeIn(showcase.replay_particles),
+            FadeIn(showcase.replay_visuals),
             FadeIn(process.particles),
+            FadeIn(process.arrows),
             run_time=0.9,
         )
         scene.add(panel.pulse, panel.traversal.pulse)
@@ -459,22 +582,19 @@ class EventSimulation:
             FadeIn(process.outcome[1]),
             FadeIn(panel.annotations),
             Transform(showcase.context, showcase.updated_context),
+            *self.particle_direction_animations(showcase.indices, 2),
             run_time=0.9,
         )
         scene.wait(1.2)
         for _ in range(2):
             self.replay_completed_showcase(showcase)
             scene.wait(0.6)
-        return panel.group_with(process, showcase.replay_particles)
+        return panel.group_with(process, showcase.replay_visuals)
 
     def play_collision_phase(self, showcase):
         model = self.model
-        collision_particles = Group(*(
-            self.particles[index] for index in model.collision_indices
-        ))
-        surface_particles = Group(*(
-            self.particles[index] for index in model.surface_indices
-        ))
+        collision_particles = self.particle_visuals(model.collision_indices)
+        surface_particles = self.particle_visuals(model.surface_indices)
         source_center = model.volume_centers[model.volume_index(model.shared_start)]
         return self.play_showcase(showcase, (
             self.focus_camera_on(self.left_point(source_center)),
@@ -484,9 +604,7 @@ class EventSimulation:
 
     def play_surface_phase(self, showcase, collision, collision_group):
         scene = self.scene
-        surface_particles = Group(*(
-            self.particles[index] for index in self.model.surface_indices
-        ))
+        surface_particles = self.particle_visuals(self.model.surface_indices)
         group = self.play_showcase(showcase, (
             FadeOut(collision_group),
             FadeOut(collision.context),
@@ -495,7 +613,7 @@ class EventSimulation:
         ))
         scene.play(
             Restore(scene.camera.frame),
-            self.particles.animate.set_opacity(1),
+            self.particle_visuals().animate.set_opacity(1),
             FadeOut(group),
             FadeOut(showcase.boundaries),
             FadeOut(showcase.context),
@@ -534,6 +652,12 @@ class EventSimulation:
                 run_time=1.5,
                 rate_func=linear,
             )
+            scene.play(
+                *self.particle_direction_animations(
+                    range(model.particle_count), start_step + 1
+                ),
+                run_time=0.55,
+            )
             scene.wait(0.7)
 
         self.play_incoherency_breakdown(advance_context)
@@ -558,6 +682,12 @@ class EventSimulation:
             ),
             run_time=1.5,
             rate_func=linear,
+        )
+        scene.play(
+            *self.particle_direction_animations(
+                range(model.particle_count), model.final_advance_step
+            ),
+            run_time=0.55,
         )
         scene.wait(0.9)
         return final_context
@@ -709,11 +839,11 @@ class EventSimulation:
         start = model.sampled_path_points[index][model.final_advance_step]
         approach = np.array((start[0], model.grid_height / 2 - 0.45, start[2]))
         boundary_point = np.array((start[0], model.grid_height / 2, start[2]))
-        other_particles = Group(*(
-            particle
-            for particle_index, particle in enumerate(self.particles)
+        other_particles = self.particle_visuals(
+            particle_index
+            for particle_index in range(model.particle_count)
             if particle_index != index
-        ))
+        )
         perimeter = SurroundingRectangle(
             self.volume_edges,
             buff=0,
@@ -725,11 +855,14 @@ class EventSimulation:
             ("TRACKED PARTICLE", 18, GREY_B, True),
             ("approaching model boundary", 21, self.particle_color, False),
         ), self.left_panel_center + 2.68 * UP)
-
         scene.play(
             Restore(scene.camera.frame),
             FadeOut(final_context),
             run_time=0.8,
+        )
+        scene.play(
+            self.particle_direction_animation_toward(index, start, approach),
+            run_time=0.55,
         )
         scene.add(perimeter)
         scene.bring_to_front(right_mask, divider)
@@ -745,6 +878,13 @@ class EventSimulation:
             rate_func=linear,
         )
         scene.wait(0.8)
+
+        scene.play(
+            self.particle_direction_animation_toward(
+                index, approach, boundary_point
+            ),
+            run_time=0.55,
+        )
 
         death_context = self.text_stack((
             ("VACUUM BOUNDARY", 18, RED_A, True),
@@ -774,10 +914,12 @@ class EventSimulation:
                 run_time=0.3,
             )
             self.particles[index].move_to(self.left_point(approach))
+            self.position_particle_arrow(self.particle_arrows[index], index)
             panel.particle.move_to(panel.path.get_start())
             panel.pulse.move_to(panel.path.get_start())
             scene.play(
                 FadeIn(self.particles[index]),
+                FadeIn(self.particle_arrows[index]),
                 FadeIn(panel.particle),
                 FadeIn(panel.pulse),
                 run_time=0.3,
@@ -875,6 +1017,7 @@ class EventSimulation:
         )
         animations = [
             FadeOut(self.particles[index], scale=0.25),
+            FadeOut(self.particle_arrows[index], scale=0.25),
             FadeOut(panel.particle, scale=0.25),
         ]
         if first:
