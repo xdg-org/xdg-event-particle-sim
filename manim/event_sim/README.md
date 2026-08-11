@@ -23,6 +23,7 @@ The animation is split by responsibility so most changes only require opening on
 - Change BVH geometry or labels in `VisualFactory`.
 - Change event timing in `play_showcase()` or the relevant `play_*_phase()` method.
 - Change shared particle size, color, or split-screen geometry on `EventSimulation`.
+- Change direction-marker size with `direction_arrow_length` and `direction_arrow_gap` on `EventSimulation`.
 
 Render from the repository root:
 

@@ -28,7 +28,7 @@ class EventPanel:
     pulse: GlowDot
     annotations: VGroup
 
-    def group_with(self, process, replay_particles):
+    def group_with(self, process, replay_visuals):
         return Group(
             self.title,
             self.bvh,
@@ -38,7 +38,7 @@ class EventPanel:
             self.pulse,
             self.annotations,
             process.group,
-            replay_particles,
+            replay_visuals,
         )
 
 
@@ -47,6 +47,7 @@ class ProcessDiagram:
     domain: Rectangle
     label: Text
     particles: VGroup
+    arrows: VGroup
     paths: VGroup
     continuations: VGroup
     hits: VGroup
@@ -100,6 +101,35 @@ class VisualFactory:
             stroke_color=color,
             stroke_width=1.3,
         )
+
+    def attached_direction_arrow(
+        self,
+        particle,
+        direction,
+        length=0.16,
+        gap=0.035,
+        stroke_width=2.2,
+    ):
+        direction = direction / np.linalg.norm(direction)
+        arrow = StrokeArrow(
+            ORIGIN,
+            RIGHT,
+            stroke_color=YELLOW,
+            stroke_width=stroke_width,
+            buff=0,
+            tip_width_ratio=3.5,
+        )
+
+        def position(direction_arrow):
+            center = particle.get_center()
+            direction_arrow.put_start_and_end_on(
+                center + gap * direction,
+                center + length * direction,
+            )
+
+        position(arrow)
+        arrow.add_updater(position)
+        return arrow
 
     def bvh_tree(self, center, color, label, scale=1.0, event=None):
         def point(x, y):
@@ -406,11 +436,29 @@ class VisualFactory:
             Line(start, end, color=YELLOW, stroke_width=3)
             for start, end in zip(starts, ends)
         ))
+        arrows = VGroup(*(
+            self.attached_direction_arrow(
+                particle,
+                end - start,
+                length=0.21,
+                gap=0.05,
+                stroke_width=2.6,
+            )
+            for particle, start, end in zip(particles, starts, ends)
+        ))
         outcome.move_to(4.05 * RIGHT + 0.28 * UP + self.event_depth)
         group = Group(
-            domain, label, particles, paths, continuations, hits, outcome
+            domain, label, particles, arrows, paths, continuations, hits, outcome
         ).deactivate_depth_test()
         group.fix_in_frame()
         return ProcessDiagram(
-            domain, label, particles, paths, continuations, hits, outcome, group
+            domain,
+            label,
+            particles,
+            arrows,
+            paths,
+            continuations,
+            hits,
+            outcome,
+            group,
         )
