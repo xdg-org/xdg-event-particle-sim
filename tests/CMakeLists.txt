@@ -18,3 +18,15 @@ foreach(test ${TEST_NAMES})
         TEST_PREFIX "${test}::"
         EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
 endforeach()
+
+set(
+TEST_FILES
+pwr_pincell.h5m
+)
+
+foreach(file ${TEST_FILES})
+    ADD_CUSTOM_TARGET(${file} ALL
+                      COMMAND ${CMAKE_COMMAND} -E create_symlink
+                      "${CMAKE_CURRENT_SOURCE_DIR}/test_files/${file}"
+                      "${CMAKE_CURRENT_BINARY_DIR}/${file}")
+endforeach()

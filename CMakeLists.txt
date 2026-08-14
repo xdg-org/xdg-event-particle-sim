@@ -37,6 +37,7 @@ if(EVENT_SIM_BUILD_TESTS)
   if(NOT Catch2_FOUND)
     list(APPEND VENDOR_PATHS vendor/catch2)
   endif()
+  list(APPEND VENDOR_PATHS tests/test_files)
 endif()
 
 if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")

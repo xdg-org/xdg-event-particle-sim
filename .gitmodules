@@ -4,3 +4,6 @@
 [submodule "vendor/catch2"]
 	path = vendor/catch2
 	url = https://github.com/catchorg/Catch2.git
+[submodule "tests/test_files"]
+	path = tests/test_files
+	url = https://github.com/xdg-org/xdg_test_files
