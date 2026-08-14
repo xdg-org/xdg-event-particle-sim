@@ -32,7 +32,7 @@ if(NOT argparse_FOUND)
 endif()
 
 # attempt to find external Catch2
-if (XDG_BUILD_TESTS)
+if(EVENT_SIM_BUILD_TESTS)
   find_package(Catch2 QUIET NO_SYSTEM_ENVIRONMENT_PATH)
   if(NOT Catch2_FOUND)
     list(APPEND VENDOR_PATHS vendor/catch2)
@@ -80,32 +80,46 @@ if(NOT argparse_FOUND)
 endif()
 
 # Catch2 testing module
-if (XDG_BUILD_TESTS)
-  if (NOT Catch2_FOUND)
+if(EVENT_SIM_BUILD_TESTS)
+  if(NOT Catch2_FOUND)
     add_subdirectory("vendor/catch2")
   endif()
-  include(CTest)
+  enable_testing()
   include(Catch)
   message(STATUS "Using Catch2 ${Catch2_VERSION} at ${Catch2_DIR}")
 endif()
 
+set(EVENT_SIM_LIBRARY_SOURCES
+  src/particle_sim_event_transport.cpp
+)
 
+add_library(event-sim-core STATIC
+  ${EVENT_SIM_LIBRARY_SOURCES}
+)
+
+target_compile_features(event-sim-core PUBLIC cxx_std_17)
+
+target_include_directories(event-sim-core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(event-sim-core
+  PUBLIC
+    xdg::xdg
+    OpenMP::OpenMP_CXX
+  PRIVATE
+    fmt::fmt
+)
 
 add_executable(xdg-particle-sim-event
   src/event_sim_output.cpp
   src/particle_sim_event.cpp
-  src/particle_sim_event_transport.cpp
 )
 
 target_compile_features(xdg-particle-sim-event PRIVATE cxx_std_17)
 
-target_include_directories(xdg-particle-sim-event PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
 target_link_libraries(xdg-particle-sim-event PRIVATE
-  xdg::xdg
-  OpenMP::OpenMP_CXX
+  event-sim-core
   fmt::fmt
   argparse::argparse
 )
@@ -119,8 +133,12 @@ elseif(EVENT_SIM_ENABLE_HIP_THRUST_SORT)
 endif()
 
 if(TARGET event_sim_thrust_sort)
-  target_compile_definitions(xdg-particle-sim-event PRIVATE EVENT_SIM_THRUST_SORT)
-  target_link_libraries(xdg-particle-sim-event PRIVATE event_sim_thrust_sort)
+  target_compile_definitions(event-sim-core PRIVATE EVENT_SIM_THRUST_SORT)
+  target_link_libraries(event-sim-core PRIVATE event_sim_thrust_sort)
+endif()
+
+if(EVENT_SIM_BUILD_TESTS)
+  add_subdirectory("tests")
 endif()
 
 install(TARGETS xdg-particle-sim-event
