@@ -43,6 +43,7 @@ struct EventParticle {
     n_events_ = 0;
     alive_ = true;
     stuck_ = false;
+    lost_ = false;
   }
 
   void sample_collision_distance(double mfp)
@@ -113,7 +114,7 @@ struct EventParticle {
       volume_ = next_volume_;
 
       // TODO: Restore optional implicit-complement graveyard handling.
-      if (volume_ == ID_NONE) {
+      if (volume_ == ID_NONE) { // TODO - is this correct?
         alive_ = false;
       }
       break;
@@ -169,6 +170,7 @@ struct EventParticle {
   int32_t n_events_ {0};
   bool alive_ {true};
   bool stuck_ {false};
+  bool lost_ {false};
 };
 
 #ifdef _OPENMP
