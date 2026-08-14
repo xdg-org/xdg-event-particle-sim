@@ -53,13 +53,9 @@ struct EventParticle {
 
   double advance()
   {
-    double distance;
-
-    if (collision_distance_ < surface_hit_distance_) {
-      distance = collision_distance_;
-    } else {
-      distance = surface_hit_distance_;
-    }
+    double distance = collision_distance_ < surface_hit_distance_
+                      ? collision_distance_
+                      : surface_hit_distance_;
 
     // Explicit scalar update avoids device compilation issues with vec3da operators.
     r_.x += distance * u_.x;
