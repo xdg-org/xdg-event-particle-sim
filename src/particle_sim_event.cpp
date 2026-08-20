@@ -81,6 +81,11 @@ args.add_argument("-i", "--nsort", "--minimum-sort-items")
     .default_value(20000)
     .help("Minimum advance queue size required for volume sorting").scan<'i', int>();
 
+args.add_argument("-d", "--exit-on-bvh-failure")
+    .default_value(false)
+    .implicit_value(true)
+    .help("Log BVH diagnostics and exit the program if the BVH traversal unexpectedly fails");
+
 try {
   args.parse_args(argc, argv);
 }
@@ -105,6 +110,8 @@ const std::string lost_particle_output =
   args.get<std::string>("--lost-particle-output");
 const uint32_t max_lost_particle_records =
   args.get<uint32_t>("--max-lost-particle-records");
+const bool exit_on_bvh_failure =
+  args.get<bool>("--exit-on-bvh-failure");
 
 if (max_lost_particle_records == 0) {
   fatal_error("Maximum number of lost particle records must be greater than 0");
@@ -119,6 +126,10 @@ else if (rt_str == "CUBQL")
   rt_lib = RTLibrary::CUBQL;
 else
   fatal_error("Invalid ray tracing library '{}' specified", rt_str);
+
+if (exit_on_bvh_failure && rt_lib != RTLibrary::CUBQL) {
+  fatal_error("--exit-on-bvh-failure currently requires the CUBQL ray tracing backend");
+}
 
 MeshLibrary mesh_lib;
 if (mesh_str == "MOAB")
@@ -165,6 +176,7 @@ sim_data.n_particles_ = args.get<uint32_t>("--n-particles");
 sim_data.max_events_ = args.get<uint32_t>("--max-events");
 sim_data.record_lost_particles_ = true;
 sim_data.max_lost_particle_records_ = max_lost_particle_records;
+sim_data.exit_on_bvh_failure_ = exit_on_bvh_failure;
 
 transport_particle_event_based(sim_data);
 
@@ -172,6 +184,19 @@ wall_timer.stop();
 const double wall_time = wall_timer.elapsed();
 
 event_sim_output::sort_lost_particle_records(sim_data);
+
+if (sim_data.stopped_on_bvh_failure_) {
+  event_sim_output::write_lost_particle_csv(lost_particle_output, sim_data);
+  event_sim_output::print_lost_particle_diagnostic(
+    std::cout, lost_particle_output, sim_data);
+
+  if (!sim_data.host_lost_particles_.empty()) {
+    xdg->bvh_diagnostics(sim_data.host_lost_particles_.front().volume);
+  }
+
+  std::cout << "Exiting early after detecting a BVH traversal failure.\n";
+  return 0;
+}
 
 if (sim_data.profile_ray_launches_) {
   const std::string ray_launch_profile_output =

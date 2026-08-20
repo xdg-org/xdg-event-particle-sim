@@ -84,6 +84,11 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.profiling.xdg_setup_s = xdg_setup_s;
   sim_data.host_ray_launch_records_.clear();
   sim_data.host_lost_particles_.clear();
+  sim_data.stopped_on_bvh_failure_ = false;
+
+  if (sim_data.exit_on_bvh_failure_) {
+    sim_data.record_lost_particles_ = true;
+  }
 
   Timer transport_timer;
   transport_timer.start();
@@ -146,6 +151,14 @@ void transport_particle_event_based(EventSimulationData& sim_data)
       break;
     } else if (max == sim_data.advance_particle_queue.size()) {
       process_advance_particle_events(sim_data);
+
+      if (sim_data.exit_on_bvh_failure_) {
+        sim_data.lost_particle_bank.sync_size_device_to_host();
+        if (sim_data.lost_particle_bank.size() > 0) {
+          sim_data.stopped_on_bvh_failure_ = true;
+          break;
+        }
+      }
     } else if (max == sim_data.surface_crossing_queue.size()) {
       process_surface_crossing_events(sim_data);
     } else if (max == sim_data.collision_queue.size()) {

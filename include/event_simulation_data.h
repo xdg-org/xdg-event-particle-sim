@@ -87,6 +87,8 @@ struct EventSimulationData {
 
   // Lost particle state information
   bool record_lost_particles_ {false};
+  bool exit_on_bvh_failure_ {false};
+  bool stopped_on_bvh_failure_ {false};
   LostParticleBank lost_particle_bank;
   uint32_t max_lost_particle_records_ {1024};
   std::vector<LostParticleState> host_lost_particles_;
