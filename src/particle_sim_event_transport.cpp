@@ -50,17 +50,21 @@ void count_particle_states(
   int num_particles,
   std::uint64_t& particles_reached_max_events,
   std::uint64_t& particles_dead,
+  std::uint64_t& particles_lost,
   int gpu_id)
 {
   std::uint64_t reached_max_events = 0;
   std::uint64_t dead = 0;
+  std::uint64_t lost = 0;
 
   #pragma omp target teams distribute parallel for device(gpu_id) \
     is_device_ptr(device_particles) \
-    reduction(+: reached_max_events, dead)
+    reduction(+: reached_max_events, dead, lost)
   for (int i = 0; i < num_particles; ++i) {
     if (device_particles[i].alive_) {
       reached_max_events++;
+    } else if (device_particles[i].lost_) {
+      lost++;
     } else {
       dead++;
     }
@@ -68,6 +72,7 @@ void count_particle_states(
 
   particles_reached_max_events = reached_max_events;
   particles_dead = dead;
+  particles_lost = lost;
 }
 
 } // namespace
@@ -78,6 +83,12 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.profiling = {};
   sim_data.profiling.xdg_setup_s = xdg_setup_s;
   sim_data.host_ray_launch_records_.clear();
+  sim_data.host_lost_particles_.clear();
+  sim_data.stopped_on_bvh_failure_ = false;
+
+  if (sim_data.exit_on_bvh_failure_) {
+    sim_data.record_lost_particles_ = true;
+  }
 
   Timer transport_timer;
   transport_timer.start();
@@ -103,6 +114,14 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.advance_particle_queue.allocate(sim_data.n_particles_, sim_data.gpu_id);
   sim_data.surface_crossing_queue.allocate(sim_data.n_particles_, sim_data.gpu_id);
   sim_data.collision_queue.allocate(sim_data.n_particles_, sim_data.gpu_id);
+
+  // Allocate storage for lost particle bank
+  if (sim_data.record_lost_particles_) {
+    if (sim_data.max_lost_particle_records_ == 0) {
+      fatal_error("Maximum number of lost particle records must be greater than 0");
+    }
+    sim_data.lost_particle_bank.allocate(sim_data.max_lost_particle_records_, sim_data.gpu_id);
+  }
 
   if (sim_data.profile_ray_launches_) {
     const std::size_t table_size = static_cast<std::size_t>(sim_data.xdg_->mesh_manager()->next_volume_id());
@@ -132,6 +151,14 @@ void transport_particle_event_based(EventSimulationData& sim_data)
       break;
     } else if (max == sim_data.advance_particle_queue.size()) {
       process_advance_particle_events(sim_data);
+
+      if (sim_data.exit_on_bvh_failure_) {
+        sim_data.lost_particle_bank.sync_size_device_to_host();
+        if (sim_data.lost_particle_bank.size() > 0) {
+          sim_data.stopped_on_bvh_failure_ = true;
+          break;
+        }
+      }
     } else if (max == sim_data.surface_crossing_queue.size()) {
       process_surface_crossing_events(sim_data);
     } else if (max == sim_data.collision_queue.size()) {
@@ -143,6 +170,7 @@ void transport_particle_event_based(EventSimulationData& sim_data)
                         static_cast<int>(sim_data.n_particles_),
                         sim_data.profiling.particles_reached_max_events,
                         sim_data.profiling.particles_dead,
+                        sim_data.profiling.particles_lost,
                         sim_data.gpu_id);
 
   sim_data.advance_particle_queue.release();
@@ -152,6 +180,29 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   if (sim_data.device_last_queried_launch_by_volume) {
     omp_target_free(sim_data.device_last_queried_launch_by_volume, sim_data.gpu_id);
     sim_data.device_last_queried_launch_by_volume = nullptr;
+  }
+
+  if (sim_data.record_lost_particles_) {
+    sim_data.lost_particle_bank.sync_size_device_to_host();
+
+    const int n_lost_records = sim_data.lost_particle_bank.size();
+    sim_data.host_lost_particles_.resize(n_lost_records);
+
+    if (n_lost_records > 0) {
+      const int copy_status = omp_target_memcpy(
+        sim_data.host_lost_particles_.data(),
+        sim_data.lost_particle_bank.d_data,
+        static_cast<std::size_t>(n_lost_records) * sizeof(LostParticleState),
+        0,
+        0,
+        sim_data.host_id,
+        sim_data.gpu_id);
+      if (copy_status != 0) {
+        fatal_error("Failed to copy lost particle records to the host");
+      }
+    }
+
+    sim_data.lost_particle_bank.release();
   }
 
   omp_target_free(sim_data.device_particles, sim_data.gpu_id);
@@ -258,7 +309,7 @@ void process_advance_particle_events(EventSimulationData& sim_data)
     ray_hits[i].direction[0] = p.u_.x;
     ray_hits[i].direction[1] = p.u_.y;
     ray_hits[i].direction[2] = p.u_.z;
-    ray_hits[i].t_min = TINY_BIT;
+    ray_hits[i].t_min = 0.0;
     ray_hits[i].t_max = INFTY;
     ray_hits[i].volume = p.volume_;
     ray_hits[i].last_hit_primitive = ID_NONE;
@@ -316,10 +367,14 @@ void process_advance_particle_events(EventSimulationData& sim_data)
     });
   }
 
+  const bool record_lost_particles = sim_data.record_lost_particles_;
+  auto lost_particle_bank = sim_data.lost_particle_bank.get_device_data();
+
   timer.start();
   #pragma omp target teams distribute parallel for device(gpu_id) \
     is_device_ptr(device_particles, ray_hits) \
-    firstprivate(advance_queue, surface_crossing_queue, collision_queue, mfp)
+    firstprivate(advance_queue, surface_crossing_queue, collision_queue, \
+                 record_lost_particles, lost_particle_bank, mfp)
   for (int i = 0; i < n_advance; i++) {
     const uint32_t particle_idx = advance_queue.data[i].idx;
     EventParticle& p = device_particles[particle_idx];
@@ -333,6 +388,18 @@ void process_advance_particle_events(EventSimulationData& sim_data)
 
     if (hit.surface == ID_NONE) {
       p.alive_ = false;
+      p.lost_ = true;
+      if (record_lost_particles) {
+        lost_particle_bank.thread_safe_append({
+          p.id_,
+          p.r_,
+          p.u_,
+          p.volume_,
+          p.rng_state_,
+          p.last_surface_hit_,
+          p.n_events_
+        });
+      }
       continue;
     }
 

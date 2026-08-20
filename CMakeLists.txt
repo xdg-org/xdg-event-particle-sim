@@ -30,6 +30,7 @@ if(NOT argparse_FOUND)
 endif()
 
 add_executable(xdg-particle-sim-event
+  src/event_sim_output.cpp
   src/particle_sim_event.cpp
   src/particle_sim_event_transport.cpp
 )

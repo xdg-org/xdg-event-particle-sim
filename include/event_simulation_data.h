@@ -16,7 +16,18 @@
 
 using namespace xdg;
 
+struct LostParticleState {
+  std::uint32_t particle_id {0};
+  Position position {0.0, 0.0, 0.0};
+  Direction direction {0.0, 0.0, 0.0};
+  MeshID volume {ID_NONE};
+  std::uint32_t rng_state {0};
+  MeshID last_surface_hit {ID_NONE};
+  std::int32_t n_events {0};
+};
+
 using ParticleEventQueue = DeviceAppendQueue<EventQueueItem>;
+using LostParticleBank = DeviceAppendQueue<LostParticleState>;
 
 struct EventSimulationData {
   struct Profiling {
@@ -36,6 +47,7 @@ struct EventSimulationData {
     std::uint64_t rays_traced {0};
     std::uint64_t particles_reached_max_events {0};
     std::uint64_t particles_dead {0};
+    std::uint64_t particles_lost {0};
   };
 
   struct RayLaunchProfilingRecord {
@@ -58,7 +70,7 @@ struct EventSimulationData {
   bool implicit_complement_is_graveyard_ {false};
   std::unordered_map<MeshID, double> cell_tracks;
 
-  uint32_t max_particles_in_flight_ {1000000};
+  uint32_t max_particles_in_flight_ {10000000};
   EventParticle* device_particles {nullptr};
   int gpu_id {0};
   int host_id {omp_get_initial_device()};
@@ -72,6 +84,15 @@ struct EventSimulationData {
 
   // Last ray launch index that queried each volume MeshID.
   std::uint64_t* device_last_queried_launch_by_volume {nullptr};
+
+  // Lost particle state information
+  bool record_lost_particles_ {false};
+  bool exit_on_bvh_failure_ {false};
+  bool stopped_on_bvh_failure_ {false};
+  LostParticleBank lost_particle_bank;
+  uint32_t max_lost_particle_records_ {1024};
+  std::vector<LostParticleState> host_lost_particles_;
 };
+
 
 #endif
