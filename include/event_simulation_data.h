@@ -70,7 +70,7 @@ struct EventSimulationData {
   bool implicit_complement_is_graveyard_ {false};
   std::unordered_map<MeshID, double> cell_tracks;
 
-  uint32_t max_particles_in_flight_ {1000000};
+  uint32_t max_particles_in_flight_ {10000000};
   EventParticle* device_particles {nullptr};
   int gpu_id {0};
   int host_id {omp_get_initial_device()};
