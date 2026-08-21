@@ -105,6 +105,28 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.gpu_id = sim_data.ray_hits.device_id;
   sim_data.host_id = omp_get_initial_device();
 
+  // Setup device side storage for cell tracklengths
+  const auto num_volumes = sim_data.xdg_->mesh_manager()->next_volume_id();
+  sim_data.cell_tracks.assign(num_volumes, 0.0);
+  const auto cell_track_bytes = static_cast<std::size_t>(num_volumes) * sizeof(double);
+
+  sim_data.device_cell_tracks = static_cast<double*>(
+    omp_target_alloc(cell_track_bytes, sim_data.gpu_id));
+  if (!sim_data.device_cell_tracks) {
+    fatal_error("Failed to allocate cell tracks on OpenMP target device.");
+  }
+
+  if (omp_target_memcpy(sim_data.device_cell_tracks,
+                        sim_data.cell_tracks.data(),
+                        cell_track_bytes,
+                        0,
+                        0,
+                        sim_data.gpu_id,
+                        sim_data.host_id) != 0) {
+    fatal_error("Failed to initialize device cell tracks.");
+  }
+
+  // Allocate device side storage for event particles and event queues
   sim_data.device_particles = static_cast<EventParticle*>(
     omp_target_alloc(sim_data.n_particles_ * sizeof(EventParticle), sim_data.gpu_id));
   if (!sim_data.device_particles) {
@@ -204,6 +226,20 @@ void transport_particle_event_based(EventSimulationData& sim_data)
 
     sim_data.lost_particle_bank.release();
   }
+
+  // Copy cell tracklengths back to host
+  if (omp_target_memcpy(sim_data.cell_tracks.data(),
+                        sim_data.device_cell_tracks,
+                        cell_track_bytes,
+                        0,
+                        0,
+                        sim_data.host_id,
+                        sim_data.gpu_id) != 0) {
+    fatal_error("Failed to copy cell tracks from the OpenMP target device.");
+  }
+
+  omp_target_free(sim_data.device_cell_tracks, sim_data.gpu_id);
+  sim_data.device_cell_tracks = nullptr;
 
   omp_target_free(sim_data.device_particles, sim_data.gpu_id);
   sim_data.device_particles = nullptr;
@@ -370,9 +406,12 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   const bool record_lost_particles = sim_data.record_lost_particles_;
   auto lost_particle_bank = sim_data.lost_particle_bank.get_device_data();
 
+  // Get the device pointer to the cell tracks map for atomic updates
+  double* device_cell_tracks = sim_data.device_cell_tracks;
+
   timer.start();
   #pragma omp target teams distribute parallel for device(gpu_id) \
-    is_device_ptr(device_particles, ray_hits) \
+    is_device_ptr(device_particles, ray_hits, device_cell_tracks) \
     firstprivate(advance_queue, surface_crossing_queue, collision_queue, \
                  record_lost_particles, lost_particle_bank, mfp)
   for (int i = 0; i < n_advance; i++) {
@@ -408,8 +447,17 @@ void process_advance_particle_events(EventSimulationData& sim_data)
                              hit.next_volume,
                              static_cast<SurfaceBoundaryCondition>(hit.boundary_condition),
                              hit.normal);
+
     p.sample_collision_distance(mfp);
-    p.advance();
+
+    // Get the volume to score and the tracklength to add
+    const MeshID track_volume = p.volume_;
+
+    const double track_length = p.advance();
+
+    // Atomically increment the tracklength tally for the volume
+    #pragma omp atomic update
+    device_cell_tracks[track_volume] += track_length;
 
     if (p.collision_distance_ < p.surface_hit_distance_) {
       collision_queue.thread_safe_append({particle_idx, p.volume_});

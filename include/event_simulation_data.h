@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include <omp.h>
@@ -68,7 +67,8 @@ struct EventSimulationData {
   bool sort_rays_by_volume_ {false};
   int minimum_sort_items_ {20000};
   bool implicit_complement_is_graveyard_ {false};
-  std::unordered_map<MeshID, double> cell_tracks;
+  std::vector<double> cell_tracks;
+  double* device_cell_tracks {nullptr};
 
   uint32_t max_particles_in_flight_ {10000000};
   EventParticle* device_particles {nullptr};
