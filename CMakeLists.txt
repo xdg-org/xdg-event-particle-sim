@@ -10,6 +10,7 @@ endif()
 
 option(EVENT_SIM_ENABLE_CUDA_THRUST_SORT "Enable CUDA Thrust event-queue sorting" OFF)
 option(EVENT_SIM_ENABLE_HIP_THRUST_SORT "Enable HIP Thrust event-queue sorting" OFF)
+option(EVENT_SIM_BUILD_TESTS "Build event simulator tests" ON)
 
 if(EVENT_SIM_ENABLE_CUDA_THRUST_SORT AND EVENT_SIM_ENABLE_HIP_THRUST_SORT)
   message(FATAL_ERROR "CUDA and HIP Thrust sorting cannot both be enabled")
@@ -20,7 +21,57 @@ message(STATUS "Found XDG: ${XDG_DIR} (version ${XDG_VERSION})")
 
 find_package(OpenMP REQUIRED COMPONENTS CXX)
 find_package(fmt CONFIG REQUIRED)
+find_package(Git QUIET)
+
+set(VENDOR_PATHS)
+
 find_package(argparse CONFIG QUIET)
+
+if(NOT argparse_FOUND)
+  list(APPEND VENDOR_PATHS vendor/argparse)
+endif()
+
+# attempt to find external Catch2
+if(EVENT_SIM_BUILD_TESTS)
+  find_package(Catch2 QUIET NO_SYSTEM_ENVIRONMENT_PATH)
+  if(NOT Catch2_FOUND)
+    list(APPEND VENDOR_PATHS vendor/catch2)
+  endif()
+  list(APPEND VENDOR_PATHS tests/test_files)
+endif()
+
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  option(EVENT_SIM_GIT_SUBMODULE "Check submodules during configuration" ON)
+  if(EVENT_SIM_GIT_SUBMODULE)
+    message(STATUS "Updating required submodules")
+    foreach(VENDOR_PATH IN LISTS VENDOR_PATHS)
+      message(STATUS "Updating submodule at ${VENDOR_PATH}")
+      execute_process(
+        COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive "${VENDOR_PATH}"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        RESULT_VARIABLE GIT_SUBMOD_RESULT
+      )
+      if(NOT GIT_SUBMOD_RESULT EQUAL 0)
+        message(FATAL_ERROR
+          "git submodule update --init failed with error code ${GIT_SUBMOD_RESULT}, "
+          "please check out the submodule at ${VENDOR_PATH} manually and try again."
+        )
+      endif()
+    endforeach()
+  endif()
+endif()
+
+foreach(VENDOR_PATH IN LISTS VENDOR_PATHS)
+  file(GLOB _event_sim_vendor_readmes
+    "${CMAKE_CURRENT_SOURCE_DIR}/${VENDOR_PATH}/README.*"
+  )
+  if(NOT _event_sim_vendor_readmes)
+    message(FATAL_ERROR
+      "The vendored dependency at ${VENDOR_PATH} is missing. "
+      "Expected a README.* file. Please update submodules and try again."
+    )
+  endif()
+endforeach()
 
 if(NOT argparse_FOUND)
   set(ARGPARSE_INSTALL OFF CACHE BOOL "" FORCE)
@@ -29,21 +80,47 @@ if(NOT argparse_FOUND)
   add_subdirectory(vendor/argparse)
 endif()
 
+# Catch2 testing module
+if(EVENT_SIM_BUILD_TESTS)
+  if(NOT Catch2_FOUND)
+    add_subdirectory("vendor/catch2")
+  endif()
+  enable_testing()
+  include(Catch)
+  message(STATUS "Using Catch2 ${Catch2_VERSION} at ${Catch2_DIR}")
+endif()
+
+set(EVENT_SIM_LIBRARY_SOURCES
+  src/particle_sim_event_transport.cpp
+)
+
+add_library(event-sim-core STATIC
+  ${EVENT_SIM_LIBRARY_SOURCES}
+)
+
+target_compile_features(event-sim-core PUBLIC cxx_std_17)
+
+target_include_directories(event-sim-core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(event-sim-core
+  PUBLIC
+    xdg::xdg
+    OpenMP::OpenMP_CXX
+  PRIVATE
+    fmt::fmt
+)
+
 add_executable(xdg-particle-sim-event
   src/event_sim_output.cpp
   src/particle_sim_event.cpp
-  src/particle_sim_event_transport.cpp
 )
 
 target_compile_features(xdg-particle-sim-event PRIVATE cxx_std_17)
 
-target_include_directories(xdg-particle-sim-event PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
 target_link_libraries(xdg-particle-sim-event PRIVATE
-  xdg::xdg
-  OpenMP::OpenMP_CXX
+  event-sim-core
   fmt::fmt
   argparse::argparse
 )
@@ -57,8 +134,12 @@ elseif(EVENT_SIM_ENABLE_HIP_THRUST_SORT)
 endif()
 
 if(TARGET event_sim_thrust_sort)
-  target_compile_definitions(xdg-particle-sim-event PRIVATE EVENT_SIM_THRUST_SORT)
-  target_link_libraries(xdg-particle-sim-event PRIVATE event_sim_thrust_sort)
+  target_compile_definitions(event-sim-core PRIVATE EVENT_SIM_THRUST_SORT)
+  target_link_libraries(event-sim-core PRIVATE event_sim_thrust_sort)
+endif()
+
+if(EVENT_SIM_BUILD_TESTS)
+  add_subdirectory("tests")
 endif()
 
 install(TARGETS xdg-particle-sim-event
