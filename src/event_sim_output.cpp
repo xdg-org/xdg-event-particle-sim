@@ -45,6 +45,14 @@ void write_summary(std::ostream& output,
   const auto num_cell_tracks_to_print =
     std::min<std::size_t>(5, ranked_cell_tracks.size());
 
+  std::string max_cell_track_volume_id;
+  std::string max_cell_track_length;
+  if (!ranked_cell_tracks.empty()) {
+    const auto& [volume, track_length] = ranked_cell_tracks.front();
+    max_cell_track_volume_id = fmt::format("{}", volume);
+    max_cell_track_length = fmt::format("{:.17g}", track_length);
+  }
+
   if (format == "csv") {
     const std::vector<std::string> columns {
       "model",
@@ -78,7 +86,9 @@ void write_summary(std::ostream& output,
       "profile_surface_crossing_calls",
       "profile_rays_traced",
       "profile_total_ray_throughput_rays_per_s",
-      "profile_average_ray_launch_throughput_rays_per_s"
+      "profile_average_ray_launch_throughput_rays_per_s",
+      "max_cell_track_volume_id",
+      "max_cell_track_length"
     };
 
     const std::vector<std::string> values {
@@ -113,7 +123,9 @@ void write_summary(std::ostream& output,
       fmt::format("{}", profiling.surface_crossing_calls),
       fmt::format("{}", profiling.rays_traced),
       fmt::format("{}", total_ray_throughput),
-      fmt::format("{}", profiling.average_ray_launch_throughput)
+      fmt::format("{}", profiling.average_ray_launch_throughput),
+      max_cell_track_volume_id,
+      max_cell_track_length
     };
 
     output << fmt::format("{}\n", fmt::join(columns, ","));
