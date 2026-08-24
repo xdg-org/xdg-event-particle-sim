@@ -21,6 +21,37 @@ enum class DirectionOctant : std::uint8_t {
   X_NEG_Y_NEG_Z_NEG = 7
 };
 
+enum class ParticleSortMode : std::uint8_t {
+  Disabled,
+  Volume,
+  Direction,
+  VolumeDirection,
+  DirectionVolume
+};
+
+constexpr const char* particle_sort_mode_name(ParticleSortMode mode)
+{
+  switch (mode) {
+    case ParticleSortMode::Disabled:
+      return "disabled";
+    case ParticleSortMode::Volume:
+      return "volume";
+    case ParticleSortMode::Direction:
+      return "direction";
+    case ParticleSortMode::VolumeDirection:
+      return "volume-direction";
+    case ParticleSortMode::DirectionVolume:
+      return "direction-volume";
+  }
+
+  return "unknown";
+}
+
+constexpr bool particle_sorting_enabled(ParticleSortMode mode)
+{
+  return mode != ParticleSortMode::Disabled;
+}
+
 #ifdef _OPENMP
 #pragma omp declare target
 #endif
@@ -69,8 +100,32 @@ struct DirectionCompare {
   }
 };
 
-void thrust_sort_by_volume(EventQueueItem* begin, EventQueueItem* end, int device_id);
-void thrust_sort_by_direction(EventQueueItem* begin, EventQueueItem* end, int device_id);
+struct VolumeDirectionCompare {
+  EVENT_SIM_HOST_DEVICE
+  bool operator()(const EventQueueItem& lhs, const EventQueueItem& rhs) const
+  {
+    if (lhs.volume != rhs.volume) {
+      return lhs.volume < rhs.volume;
+    }
+    return lhs.direction_octant < rhs.direction_octant;
+  }
+};
+
+struct DirectionVolumeCompare {
+  EVENT_SIM_HOST_DEVICE
+  bool operator()(const EventQueueItem& lhs, const EventQueueItem& rhs) const
+  {
+    if (lhs.direction_octant != rhs.direction_octant) {
+      return lhs.direction_octant < rhs.direction_octant;
+    }
+    return lhs.volume < rhs.volume;
+  }
+};
+
+void thrust_sort_event_queue(EventQueueItem* begin,
+                             EventQueueItem* end,
+                             ParticleSortMode mode,
+                             int device_id);
 
 #undef EVENT_SIM_HOST_DEVICE
 

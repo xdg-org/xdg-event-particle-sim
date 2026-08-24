@@ -6,29 +6,32 @@
 
 #include "particle_event_queue.h"
 
-void thrust_sort_by_volume(EventQueueItem* begin, EventQueueItem* end, int device_id)
+void thrust_sort_event_queue(EventQueueItem* begin,
+                             EventQueueItem* end,
+                             ParticleSortMode mode,
+                             int device_id)
 {
   cudaError_t error = cudaSetDevice(device_id);
   if (error != cudaSuccess) {
     throw std::runtime_error(cudaGetErrorString(error));
   }
 
-  thrust::sort(thrust::device, begin, end, VolumeCompare {});
-
-  error = cudaDeviceSynchronize();
-  if (error != cudaSuccess) {
-    throw std::runtime_error(cudaGetErrorString(error));
+  switch (mode) {
+    case ParticleSortMode::Disabled:
+      return;
+    case ParticleSortMode::Volume:
+      thrust::sort(thrust::device, begin, end, VolumeCompare {});
+      break;
+    case ParticleSortMode::Direction:
+      thrust::sort(thrust::device, begin, end, DirectionCompare {});
+      break;
+    case ParticleSortMode::VolumeDirection:
+      thrust::sort(thrust::device, begin, end, VolumeDirectionCompare {});
+      break;
+    case ParticleSortMode::DirectionVolume:
+      thrust::sort(thrust::device, begin, end, DirectionVolumeCompare {});
+      break;
   }
-}
-
-void thrust_sort_by_direction(EventQueueItem* begin, EventQueueItem* end, int device_id)
-{
-  cudaError_t error = cudaSetDevice(device_id);
-  if (error != cudaSuccess) {
-    throw std::runtime_error(cudaGetErrorString(error));
-  }
-
-  thrust::sort(thrust::device, begin, end, DirectionCompare {});
 
   error = cudaDeviceSynchronize();
   if (error != cudaSuccess) {

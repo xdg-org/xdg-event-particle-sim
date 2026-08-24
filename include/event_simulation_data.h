@@ -64,8 +64,7 @@ struct EventSimulationData {
   uint32_t n_particles_ {1000000};
   uint32_t max_events_ {1000};
   bool profile_ray_launches_ {false};
-  bool sort_rays_by_volume_ {false};
-  bool sort_rays_by_direction_ {false};
+  ParticleSortMode particle_sort_mode_ {ParticleSortMode::Disabled};
   int minimum_sort_items_ {20000};
   bool implicit_complement_is_graveyard_ {false};
   std::vector<double> cell_tracks;

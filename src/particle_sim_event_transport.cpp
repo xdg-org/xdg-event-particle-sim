@@ -315,18 +315,17 @@ void process_advance_particle_events(EventSimulationData& sim_data)
 
   Timer timer;
 
-  const bool sorting_requested =
-    sim_data.sort_rays_by_volume_ || sim_data.sort_rays_by_direction_;
+  const bool sorting_requested = particle_sorting_enabled(sim_data.particle_sort_mode_);
 
   if (sorting_requested) {
 #ifdef EVENT_SIM_THRUST_SORT
     if (n_advance >= sim_data.minimum_sort_items_) {
       timer.start();
-      if (sim_data.sort_rays_by_volume_) {
-        thrust_sort_by_volume(advance_queue.data, advance_queue.data + n_advance, gpu_id);
-      } else {
-        thrust_sort_by_direction(advance_queue.data, advance_queue.data + n_advance, gpu_id);
-      }
+      // Sort the advance queue based on the requested sorting mode
+      thrust_sort_event_queue(advance_queue.data,
+                              advance_queue.data + n_advance,
+                              sim_data.particle_sort_mode_,
+                              gpu_id);
       timer.stop();
       launch_ray_sort_s = timer.elapsed();
       sim_data.profiling.advance_sort_rays_s += launch_ray_sort_s;

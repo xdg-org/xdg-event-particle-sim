@@ -23,9 +23,7 @@ void write_summary(std::ostream& output,
     profiling.total_ray_trace_s > 0.0
       ? static_cast<double>(profiling.rays_traced) / profiling.total_ray_trace_s
       : 0.0;
-  const std::string sorting_mode = sim_data.sort_rays_by_volume_
-    ? "volume"
-    : (sim_data.sort_rays_by_direction_ ? "direction" : "disabled");
+  const std::string sorting_mode = particle_sort_mode_name(sim_data.particle_sort_mode_);
 
   // Rank cell tracks by track length in descending order
   const auto& mm = sim_data.xdg_->mesh_manager();
@@ -73,8 +71,6 @@ void write_summary(std::ostream& output,
       "particles_dead",
       "particles_lost",
       "sorting_mode",
-      "sort_rays_by_volume",
-      "sort_rays_by_direction",
       "minimum_sort_items",
       "wall_time_s",
       "profile_xdg_setup_s",
@@ -112,8 +108,6 @@ void write_summary(std::ostream& output,
       fmt::format("{}", profiling.particles_dead),
       fmt::format("{}", profiling.particles_lost),
       sorting_mode,
-      fmt::format("{}", sim_data.sort_rays_by_volume_),
-      fmt::format("{}", sim_data.sort_rays_by_direction_),
       fmt::format("{}", sim_data.minimum_sort_items_),
       fmt::format("{}", metadata.wall_time_s),
       fmt::format("{}", profiling.xdg_setup_s),
