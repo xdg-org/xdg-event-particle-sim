@@ -83,6 +83,9 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.profiling = {};
   sim_data.profiling.xdg_setup_s = xdg_setup_s;
   sim_data.host_ray_launch_records_.clear();
+  sim_data.queued_initial_rays_ = 0;
+  sim_data.queued_collision_rays_ = 0;
+  sim_data.queued_surface_crossing_rays_ = 0;
   sim_data.host_lost_particles_.clear();
   sim_data.stopped_on_bvh_failure_ = false;
 
@@ -288,6 +291,7 @@ void process_init_events(EventSimulationData& sim_data)
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
+  sim_data.queued_initial_rays_ = sim_data.advance_particle_queue.size();
 }
 
 void process_advance_particle_events(EventSimulationData& sim_data)
@@ -393,16 +397,29 @@ void process_advance_particle_events(EventSimulationData& sim_data)
 
   if (sim_data.profile_ray_launches_) {
     const std::uint64_t launch_index = sim_data.profiling.ray_launches - 1;
-    const std::int32_t num_active_volumes = count_active_queued_volumes(advance_queue,
-                                                                        n_advance,
-                                                                        sim_data.device_last_queried_launch_by_volume,
-                                                                        launch_index,
-                                                                        gpu_id);
+    const std::int32_t num_active_volumes = count_active_queued_volumes(
+      advance_queue,
+      n_advance,
+      sim_data.device_last_queried_launch_by_volume,
+      launch_index,
+      gpu_id);
+    const std::int32_t num_event_source_rays =
+      sim_data.queued_initial_rays_
+      + sim_data.queued_collision_rays_
+      + sim_data.queued_surface_crossing_rays_;
+    if (num_event_source_rays != n_advance) {
+      fatal_error("Advance launch contains {} rays, but event source counts total {}.",
+                  n_advance,
+                  num_event_source_rays);
+    }
 
     sim_data.host_ray_launch_records_.push_back({
       launch_index,
       n_advance,
       num_active_volumes,
+      sim_data.queued_initial_rays_,
+      sim_data.queued_collision_rays_,
+      sim_data.queued_surface_crossing_rays_,
       launch_ray_sort_s,
       launch_ray_trace_s,
       launch_ray_throughput
@@ -477,6 +494,9 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   sim_data.surface_crossing_queue.sync_size_device_to_host();
   sim_data.collision_queue.sync_size_device_to_host();
   sim_data.advance_particle_queue.reset();
+  sim_data.queued_initial_rays_ = 0;
+  sim_data.queued_collision_rays_ = 0;
+  sim_data.queued_surface_crossing_rays_ = 0;
 
   total_timer.stop();
   sim_data.profiling.advance_total_s += total_timer.elapsed();
@@ -497,6 +517,7 @@ void process_collision_events(EventSimulationData& sim_data)
 
   auto advance_queue = sim_data.advance_particle_queue.get_device_data();
   auto collision_queue = sim_data.collision_queue.get_device_data();
+  const int previous_n_advance = sim_data.advance_particle_queue.size();
   const int gpu_id = sim_data.gpu_id;
   const int max_events = sim_data.max_events_;
 
@@ -517,6 +538,8 @@ void process_collision_events(EventSimulationData& sim_data)
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
+  sim_data.queued_collision_rays_ +=
+    sim_data.advance_particle_queue.size() - previous_n_advance;
   sim_data.collision_queue.reset();
   timer.stop();
   sim_data.profiling.collision_s += timer.elapsed();
@@ -537,6 +560,7 @@ void process_surface_crossing_events(EventSimulationData& sim_data)
 
   auto advance_queue = sim_data.advance_particle_queue.get_device_data();
   auto surface_crossing_queue = sim_data.surface_crossing_queue.get_device_data();
+  const int previous_n_advance = sim_data.advance_particle_queue.size();
   const int gpu_id = sim_data.gpu_id;
   const int max_events = sim_data.max_events_;
 
@@ -556,6 +580,8 @@ void process_surface_crossing_events(EventSimulationData& sim_data)
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
+  sim_data.queued_surface_crossing_rays_ +=
+    sim_data.advance_particle_queue.size() - previous_n_advance;
   sim_data.surface_crossing_queue.reset();
   timer.stop();
   sim_data.profiling.surface_crossing_s += timer.elapsed();

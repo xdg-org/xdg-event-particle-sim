@@ -1,5 +1,6 @@
 // for testing
 #include <array>
+#include <cstdint>
 #include <utility>
 
 #include <catch2/catch_template_test_macros.hpp>
@@ -27,6 +28,7 @@ TEST_CASE("pwr-pincell event sim test")
   sim_data.n_particles_ = 100000;
   sim_data.max_events_ = 100;
   sim_data.mfp_ = 0.5;
+  sim_data.profile_ray_launches_ = true;
 
   transport_particle_event_based(sim_data);
 
@@ -43,6 +45,38 @@ TEST_CASE("pwr-pincell event sim test")
   REQUIRE(sim_data.profiling.particles_lost == 0);
   REQUIRE(sim_data.profiling.ray_launches == 166);
   REQUIRE(sim_data.profiling.rays_traced == 10000000);
+
+  REQUIRE(sim_data.host_ray_launch_records_.size()
+          == sim_data.profiling.ray_launches);
+
+  std::uint64_t num_profiled_rays = 0;
+  std::uint64_t num_initial_rays = 0;
+  std::uint64_t num_collision_rays = 0;
+  std::uint64_t num_surface_crossing_rays = 0;
+  for (const auto& launch : sim_data.host_ray_launch_records_) {
+    const auto num_event_source_rays =
+      launch.num_initial_rays
+      + launch.num_collision_rays
+      + launch.num_surface_crossing_rays;
+    REQUIRE(num_event_source_rays == launch.num_rays);
+
+    num_profiled_rays += static_cast<std::uint64_t>(launch.num_rays);
+    num_initial_rays += static_cast<std::uint64_t>(launch.num_initial_rays);
+    num_collision_rays += static_cast<std::uint64_t>(launch.num_collision_rays);
+    num_surface_crossing_rays +=
+      static_cast<std::uint64_t>(launch.num_surface_crossing_rays);
+
+  }
+
+  REQUIRE(num_profiled_rays == sim_data.profiling.rays_traced);
+  REQUIRE(num_initial_rays == sim_data.n_particles_);
+  REQUIRE(num_collision_rays > 0);
+  REQUIRE(num_surface_crossing_rays > 0);
+
+  const auto& initial_launch = sim_data.host_ray_launch_records_.front();
+  REQUIRE(initial_launch.num_initial_rays == initial_launch.num_rays);
+  REQUIRE(initial_launch.num_collision_rays == 0);
+  REQUIRE(initial_launch.num_surface_crossing_rays == 0);
 
   // Check the cell track lengths
   for (const auto& [volume, expected_track] : expected_cell_tracks) {

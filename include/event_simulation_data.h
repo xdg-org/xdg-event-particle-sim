@@ -54,6 +54,9 @@ struct EventSimulationData {
     std::uint64_t launch_index {0};
     std::int32_t num_rays {0};
     std::int32_t num_active_volumes {0};
+    std::int32_t num_initial_rays {0};
+    std::int32_t num_collision_rays {0};
+    std::int32_t num_surface_crossing_rays {0};
     double ray_sort_s {0.0};
     double ray_trace_s {0.0};
     double ray_throughput {0.0};
@@ -82,6 +85,9 @@ struct EventSimulationData {
   Profiling profiling;
 
   std::vector<RayLaunchProfilingRecord> host_ray_launch_records_;
+  std::int32_t queued_initial_rays_ {0};
+  std::int32_t queued_collision_rays_ {0};
+  std::int32_t queued_surface_crossing_rays_ {0};
 
   // Last ray launch index that queried each volume MeshID.
   std::uint64_t* device_last_queried_launch_by_volume {nullptr};

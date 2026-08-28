@@ -83,7 +83,10 @@ measures the batched ray-trace phase rather than the complete transport loop.
 
 The `plot_ray_launches.py` script reads the per-launch CSV written by
 `--enable-profiling-ray-launch` and produces basic ray-tracing performance
-plots.
+plots. Each launch records how many rays were queued by initialization,
+collision, and surface-crossing events. Launches containing rays from only one
+source event are labelled `initial`, `collision`, or `surface_crossing`; all
+others are labelled `mixed`.
 
 Generate ray launch data:
 

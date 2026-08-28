@@ -7,6 +7,30 @@ import pandas as pd
 from matplotlib.colors import Normalize
 
 
+EVENT_TYPE_ORDER = ["initial", "collision", "surface_crossing", "mixed", "unlabelled"]
+EVENT_TYPE_LABELS = {
+    "initial": "Initial",
+    "collision": "Collision",
+    "surface_crossing": "Surface crossing",
+    "mixed": "Mixed",
+    "unlabelled": "Unlabelled",
+}
+EVENT_TYPE_MARKERS = {
+    "initial": "*",
+    "collision": "o",
+    "surface_crossing": "^",
+    "mixed": "s",
+    "unlabelled": "o",
+}
+EVENT_TYPE_COLORS = {
+    "initial": "tab:orange",
+    "collision": "tab:blue",
+    "surface_crossing": "tab:green",
+    "mixed": "tab:red",
+    "unlabelled": "tab:gray",
+}
+
+
 def plot_title(title, csv_title):
     return f"{title}: {csv_title}"
 
@@ -16,6 +40,10 @@ def plot_filename(name, csv_stem):
 
 
 def process_ray_launches(ray_launches):
+    if "event_type" not in ray_launches:
+        ray_launches = ray_launches.copy()
+        ray_launches["event_type"] = "unlabelled"
+
     # Filter out queue-draining launches before deriving plot-ready columns.
     minimum_num_rays = 0.5 * ray_launches["num_rays"].max()
     processed_ray_launches = ray_launches[ray_launches["num_rays"] >= minimum_num_rays].copy()
@@ -26,12 +54,67 @@ def process_ray_launches(ray_launches):
     return processed_ray_launches
 
 
+def scatter_by_event_type(
+    ax,
+    x,
+    y,
+    event_types,
+    *,
+    color_values=None,
+    norm=None,
+    size=10,
+    alpha=0.5,
+):
+    first_collection = None
+    present_event_types = list(dict.fromkeys(event_types))
+    ordered_event_types = [
+        event_type
+        for event_type in EVENT_TYPE_ORDER
+        if event_type in present_event_types
+    ]
+    ordered_event_types.extend(
+        event_type
+        for event_type in present_event_types
+        if event_type not in EVENT_TYPE_ORDER
+    )
+
+    for event_type in ordered_event_types:
+        mask = event_types == event_type
+        scatter_kwargs = {
+            "marker": EVENT_TYPE_MARKERS.get(event_type, "x"),
+            "label": EVENT_TYPE_LABELS.get(
+                event_type, event_type.replace("_", " ").title()
+            ),
+            "s": size,
+            "alpha": alpha,
+        }
+        if color_values is None:
+            scatter_kwargs["color"] = EVENT_TYPE_COLORS.get(event_type, "tab:gray")
+        else:
+            scatter_kwargs["c"] = color_values[mask]
+            scatter_kwargs["cmap"] = "viridis"
+            scatter_kwargs["norm"] = norm
+
+        collection = ax.scatter(x[mask], y[mask], **scatter_kwargs)
+        if first_collection is None:
+            first_collection = collection
+
+    return first_collection
+
+
 def plot_ray_throughput_by_launch(ray_launches, csv_title, csv_stem):
     fig, ax = plt.subplots()
-    ax.scatter(ray_launches["launch_index"], ray_launches["ray_throughput_mrays_per_s"], s=6, alpha=0.5)
+    scatter_by_event_type(
+        ax,
+        ray_launches["launch_index"],
+        ray_launches["ray_throughput_mrays_per_s"],
+        ray_launches["event_type"],
+        size=8,
+    )
     ax.set_title(plot_title("Ray Throughput by Launch", csv_title))
     ax.set_xlabel("Launch index")
     ax.set_ylabel("Ray throughput (million rays/s)")
+    ax.legend(title="Event source")
     fig.savefig(plot_filename("ray_throughput_by_launch", csv_stem), dpi=200, bbox_inches="tight")
     plt.show()
 
@@ -40,11 +123,19 @@ def plot_ray_throughput_by_active_volumes_and_launch_size(ray_launches, csv_titl
     fig, ax = plt.subplots()
     launch_size_mrays = ray_launches["launch_size_mrays"]
     launch_size_norm = Normalize(launch_size_mrays.min(), launch_size_mrays.max())
-    points = ax.scatter(ray_launches["num_active_volumes"], ray_launches["ray_throughput_mrays_per_s"], c=launch_size_mrays, norm=launch_size_norm, s=10, alpha=0.5)
+    points = scatter_by_event_type(
+        ax,
+        ray_launches["num_active_volumes"],
+        ray_launches["ray_throughput_mrays_per_s"],
+        ray_launches["event_type"],
+        color_values=launch_size_mrays,
+        norm=launch_size_norm,
+    )
     ax.set_title(plot_title("Ray Throughput by Active Volumes and Launch Size", csv_title))
     ax.set_xlabel("Active volumes")
     ax.set_ylabel("Ray throughput (million rays/s)")
     fig.colorbar(points, ax=ax, label="Launch size (million rays)")
+    ax.legend(title="Event source")
     fig.savefig(plot_filename("ray_throughput_by_active_volumes_and_launch_size", csv_stem), dpi=200, bbox_inches="tight")
     plt.show()
 
@@ -52,21 +143,36 @@ def plot_ray_throughput_by_active_volumes_and_launch_size(ray_launches, csv_titl
 def plot_ray_trace_time_by_launch_size_and_active_volumes(ray_launches, csv_title, csv_stem):
     fig, ax = plt.subplots()
     active_volume_norm = Normalize(ray_launches["num_active_volumes"].min(), ray_launches["num_active_volumes"].max())
-    points = ax.scatter(ray_launches["launch_size_mrays"], ray_launches["ray_trace_s"], c=ray_launches["num_active_volumes"], norm=active_volume_norm, s=10, alpha=0.5)
+    points = scatter_by_event_type(
+        ax,
+        ray_launches["launch_size_mrays"],
+        ray_launches["ray_trace_s"],
+        ray_launches["event_type"],
+        color_values=ray_launches["num_active_volumes"],
+        norm=active_volume_norm,
+    )
     ax.set_title(plot_title("Ray Trace Time by Launch Size and Active Volumes", csv_title))
     ax.set_xlabel("Launch size (million rays)")
     ax.set_ylabel("Ray trace time (s)")
     fig.colorbar(points, ax=ax, label="Active volumes")
+    ax.legend(title="Event source")
     fig.savefig(plot_filename("ray_trace_time_by_launch_size_and_active_volumes", csv_stem), dpi=200, bbox_inches="tight")
     plt.show()
 
 
 def plot_active_volumes_by_launch(ray_launches, csv_title, csv_stem):
     fig, ax = plt.subplots()
-    ax.scatter(ray_launches["launch_index"], ray_launches["num_active_volumes"], s=6, alpha=0.5)
+    scatter_by_event_type(
+        ax,
+        ray_launches["launch_index"],
+        ray_launches["num_active_volumes"],
+        ray_launches["event_type"],
+        size=8,
+    )
     ax.set_title(plot_title("Active Volumes by Launch", csv_title))
     ax.set_xlabel("Launch index")
     ax.set_ylabel("Active volumes")
+    ax.legend(title="Event source")
     fig.savefig(plot_filename("active_volumes_by_launch", csv_stem), dpi=200, bbox_inches="tight")
     plt.show()
 
@@ -76,8 +182,22 @@ def plot_ray_launch_summary(ray_launches, csv_title, csv_stem):
     launch_size_mrays = ray_launches["launch_size_mrays"]
     launch_size_norm = Normalize(launch_size_mrays.min(), launch_size_mrays.max())
 
-    axes[0].scatter(ray_launches["launch_index"], ray_launches["ray_throughput_mrays_per_s"], c=launch_size_mrays, norm=launch_size_norm, s=10, alpha=0.5)
-    throughput_points = axes[1].scatter(ray_launches["num_active_volumes"], ray_launches["ray_throughput_mrays_per_s"], c=launch_size_mrays, norm=launch_size_norm, s=10, alpha=0.5)
+    scatter_by_event_type(
+        axes[0],
+        ray_launches["launch_index"],
+        ray_launches["ray_throughput_mrays_per_s"],
+        ray_launches["event_type"],
+        color_values=launch_size_mrays,
+        norm=launch_size_norm,
+    )
+    throughput_points = scatter_by_event_type(
+        axes[1],
+        ray_launches["num_active_volumes"],
+        ray_launches["ray_throughput_mrays_per_s"],
+        ray_launches["event_type"],
+        color_values=launch_size_mrays,
+        norm=launch_size_norm,
+    )
 
     axes[0].set_title(plot_title("Ray Throughput by Launch", csv_title))
     axes[0].set_xlabel("Launch index")
@@ -86,6 +206,7 @@ def plot_ray_launch_summary(ray_launches, csv_title, csv_stem):
     axes[1].set_title(plot_title("Ray Throughput by Active Volumes", csv_title))
     axes[1].set_xlabel("Active volumes")
     axes[1].set_ylabel("Ray throughput (million rays/s)")
+    axes[1].legend(title="Event source")
 
     fig.suptitle(plot_title("Ray Launch Profiling Summary", csv_title))
     fig.colorbar(throughput_points, ax=axes, label="Launch size (million rays)")
@@ -110,7 +231,6 @@ def main():
     plot_ray_trace_time_by_launch_size_and_active_volumes(processed_ray_launches, csv_title, csv_stem)
     plot_active_volumes_by_launch(processed_ray_launches, csv_title, csv_stem)
     plot_ray_launch_summary(processed_ray_launches, csv_title, csv_stem)
-
 
 if __name__ == "__main__":
     main()
