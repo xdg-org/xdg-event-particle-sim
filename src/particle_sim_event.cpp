@@ -76,14 +76,16 @@ int main(int argc, char** argv) {
       .default_value("cell-tracks.csv")
       .help("Output file for per-volume cell track-length tallies");
 
-  args.add_argument("-s", "--sort-vol", "--sort-by-volume")
-      .default_value(false)
-      .implicit_value(true)
-      .help("Sort each advance queue by volume on the device before ray packing");
+  args.add_argument("--sort-mode")
+      .metavar("{disabled,volume,direction,volume-direction,direction-volume}") // print in help message
+      .default_value("disabled")
+      .choices("disabled", "volume", "direction", "volume-direction", "direction-volume")
+      .help("Advance-queue sorting mode; compound modes list the primary key first. Pick from: "
+            "{disabled,volume,direction,volume-direction,direction-volume}");
 
   args.add_argument("-i", "--nsort", "--minimum-sort-items")
       .default_value(20000)
-      .help("Minimum advance queue size required for volume sorting").scan<'i', int>();
+      .help("Minimum advance queue size required for particle sorting").scan<'i', int>();
 
   args.add_argument("-d", "--exit-on-bvh-failure")
       .default_value(false)
@@ -96,6 +98,32 @@ int main(int argc, char** argv) {
   catch (const std::runtime_error& err) {
     std::cout << err.what() << std::endl;
     std::cout << args;
+    return 1;
+  }
+
+  const std::string sort_mode_name = args.get<std::string>("--sort-mode");
+  const int minimum_sort_items = args.get<int>("--minimum-sort-items");
+
+  ParticleSortMode particle_sort_mode = ParticleSortMode::Disabled;
+  if (sort_mode_name == "volume") {
+    particle_sort_mode = ParticleSortMode::Volume;
+  } else if (sort_mode_name == "direction") {
+    particle_sort_mode = ParticleSortMode::Direction;
+  } else if (sort_mode_name == "volume-direction") {
+    particle_sort_mode = ParticleSortMode::VolumeDirection;
+  } else if (sort_mode_name == "direction-volume") {
+    particle_sort_mode = ParticleSortMode::DirectionVolume;
+  }
+
+#ifndef EVENT_SIM_THRUST_SORT
+  if (particle_sorting_enabled(particle_sort_mode)) {
+    std::cerr << "Particle sorting requested, but this build does not include a Thrust sorting backend.\n";
+    return 1;
+  }
+#endif
+
+  if (minimum_sort_items < 0) {
+    std::cerr << "Minimum sort items must be non-negative.\n";
     return 1;
   }
 
@@ -173,8 +201,8 @@ int main(int argc, char** argv) {
   sim_data.mfp_ = args.get<double>("--mfp");
 
   sim_data.profile_ray_launches_ = args.get<bool>("--enable-profiling-ray-launch");
-  sim_data.sort_rays_by_volume_ = args.get<bool>("--sort-by-volume");
-  sim_data.minimum_sort_items_ = args.get<int>("--minimum-sort-items");
+  sim_data.particle_sort_mode_ = particle_sort_mode;
+  sim_data.minimum_sort_items_ = minimum_sort_items;
   sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
   sim_data.n_particles_ = args.get<uint32_t>("--n-particles");
   sim_data.max_events_ = args.get<uint32_t>("--max-events");

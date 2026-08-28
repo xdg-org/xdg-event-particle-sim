@@ -25,7 +25,8 @@ struct LostParticleState {
   std::int32_t n_events {0};
 };
 
-using ParticleEventQueue = DeviceAppendQueue<EventQueueItem>;
+using AdvanceParticleQueue = DeviceAppendQueue<AdvanceQueueItem>;
+using ParticleIndexQueue = DeviceAppendQueue<ParticleIndexQueueItem>;
 using LostParticleBank = DeviceAppendQueue<LostParticleState>;
 
 struct EventSimulationData {
@@ -53,7 +54,7 @@ struct EventSimulationData {
     std::uint64_t launch_index {0};
     std::int32_t num_rays {0};
     std::int32_t num_active_volumes {0};
-    double volume_sort_s {0.0};
+    double ray_sort_s {0.0};
     double ray_trace_s {0.0};
     double ray_throughput {0.0};
   };
@@ -64,7 +65,7 @@ struct EventSimulationData {
   uint32_t n_particles_ {1000000};
   uint32_t max_events_ {1000};
   bool profile_ray_launches_ {false};
-  bool sort_rays_by_volume_ {false};
+  ParticleSortMode particle_sort_mode_ {ParticleSortMode::Disabled};
   int minimum_sort_items_ {20000};
   bool implicit_complement_is_graveyard_ {false};
   std::vector<double> cell_tracks;
@@ -75,9 +76,9 @@ struct EventSimulationData {
   int gpu_id {0};
   int host_id {omp_get_initial_device()};
   XDGRayHitBuffer ray_hits;
-  ParticleEventQueue advance_particle_queue;
-  ParticleEventQueue surface_crossing_queue;
-  ParticleEventQueue collision_queue;
+  AdvanceParticleQueue advance_particle_queue;
+  ParticleIndexQueue surface_crossing_queue;
+  ParticleIndexQueue collision_queue;
   Profiling profiling;
 
   std::vector<RayLaunchProfilingRecord> host_ray_launch_records_;
@@ -93,6 +94,5 @@ struct EventSimulationData {
   uint32_t max_lost_particle_records_ {1024};
   std::vector<LostParticleState> host_lost_particles_;
 };
-
 
 #endif

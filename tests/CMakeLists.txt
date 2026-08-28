@@ -1,10 +1,6 @@
 set(TEST_NAMES
     test_event_sim
-    # test_event_queue
-    # test_event_queue_sort
-    # test_event_queue_sort_thrust
-    # test_event_queue_sort_thrust_cuda
-    # test_event_queue_sort_thrust_hip
+    test_particle_sorting
 )
 
 foreach(test ${TEST_NAMES})

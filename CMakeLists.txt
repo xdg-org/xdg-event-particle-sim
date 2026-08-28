@@ -135,6 +135,7 @@ endif()
 
 if(TARGET event_sim_thrust_sort)
   target_compile_definitions(event-sim-core PRIVATE EVENT_SIM_THRUST_SORT)
+  target_compile_definitions(xdg-particle-sim-event PRIVATE EVENT_SIM_THRUST_SORT)
   target_link_libraries(event-sim-core PRIVATE event_sim_thrust_sort)
 endif()
 

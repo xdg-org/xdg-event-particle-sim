@@ -3,8 +3,9 @@
 A basic GPU event-based pseudo particle transport simulation application for
 mocking neutral-particle transport against CAD models with the XDG library. This
 application acts as a mock interface for XDG's GPU API for future particle
-transport codes wishing to use XDG for CAD transport. GPU sorting of volumes is 
-provided via CUDA thrust or HIP thrust sorting. 
+transport codes wishing to use XDG for CAD transport. GPU sorting of event
+queues by volume, direction octant, or compound combinations of the two is
+provided through CUDA or HIP Thrust.
 
 ## Building
 
@@ -45,10 +46,11 @@ Run example:
 ./build/llvm_ada/xdg-particle-sim-event <mesh.h5m> \
   --mesh-library MOAB \
   --rt-library CUBQL \
-  --sort-by-volume
+  --sort-mode volume-direction
 ```
 
-The `--sort-by-volume` option enables the Thrust queue sort at runtime.
+`--sort-mode` accepts `disabled`, `volume`, `direction`, `volume-direction`, or
+`direction-volume`. Compound mode names list the primary key first.
 
 ## Plotting Ray Launch Data
 
@@ -84,7 +86,7 @@ For example:
 python3 sweep_mean_free_path.py run atr.h5m \
   --mean-free-paths 0.1 0.25 0.5 1 2 5 10 \
   --output-directory mfp_sweep \
-  --sort-by-volume \
+  --sort-mode volume \
   --profile-ray-launches
 ```
 
