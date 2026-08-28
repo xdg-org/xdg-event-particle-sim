@@ -363,6 +363,27 @@ void write_ray_launch_profile_csv(const std::string& filename,
   }
 }
 
+void write_volume_occupancy_profile_csv(const std::string& filename,
+                                        const EventSimulationData& sim_data)
+{
+  std::ofstream output(filename);
+  if (!output) {
+    fatal_error("Failed to open volume occupancy profiling output '{}'.", filename);
+  }
+
+  const auto num_model_volumes = sim_data.xdg_->mesh_manager()->num_volumes();
+  output << "launch_index,num_model_volumes,volume_id,num_rays\n";
+  for (const auto& launch : sim_data.host_ray_launch_records_) {
+    for (const auto& occupancy : launch.volume_occupancies) {
+      output << fmt::format("{},{},{},{}\n",
+                            launch.launch_index,
+                            num_model_volumes,
+                            occupancy.volume,
+                            occupancy.num_rays);
+    }
+  }
+}
+
 void sort_lost_particle_records(EventSimulationData& sim_data)
 {
   std::sort(sim_data.host_lost_particles_.begin(),

@@ -36,6 +36,9 @@ void write_summary(std::ostream& output,
 void write_ray_launch_profile_csv(const std::string& filename,
                                   const EventSimulationData& sim_data);
 
+void write_volume_occupancy_profile_csv(const std::string& filename,
+                                        const EventSimulationData& sim_data);
+
 void sort_lost_particle_records(EventSimulationData& sim_data);
 
 void write_lost_particle_csv(const std::string& filename,

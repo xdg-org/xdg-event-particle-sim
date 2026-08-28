@@ -104,6 +104,22 @@ Then run:
 python3 plot_ray_launches.py ray-launches.csv
 ```
 
+Collect per-volume queued-ray populations for every launch with:
+
+```bash
+./build/llvm_ada/xdg-particle-sim-event <mesh.h5m> \
+  --enable-profiling-volume-occupancy \
+  --ray-launch-profile-output ray-launches.csv \
+  --volume-occupancy-profile-output volume-occupancy.csv
+
+python3 plot_ray_launches.py ray-launches.csv \
+  --volume-occupancy-csv volume-occupancy.csv
+```
+
+Volume occupancy profiling implies ordinary ray-launch profiling. It writes
+only occupied volumes to the long-format occupancy CSV; the model volume count
+is retained so plots can reconstruct inactive volumes.
+
 ## Mean Free Path Sweeps
 
 The `sweep_mean_free_path.py` script runs the particle simulation over a list
