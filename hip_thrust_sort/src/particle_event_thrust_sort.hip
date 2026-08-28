@@ -6,8 +6,8 @@
 
 #include "particle_event_queue.h"
 
-void thrust_sort_event_queue(EventQueueItem* begin,
-                             EventQueueItem* end,
+void thrust_sort_event_queue(AdvanceQueueItem* begin,
+                             AdvanceQueueItem* end,
                              ParticleSortMode mode,
                              int device_id)
 {

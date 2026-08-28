@@ -78,15 +78,30 @@ inline DirectionOctant get_direction_octant(double x, double y, double z)
 #pragma omp end declare target
 #endif
 
-struct EventQueueItem {
+// Collision and surface-crossing queues only need to identify the particle.
+// Keep their payload independent of the sorting keys carried by advance work.
+struct ParticleIndexQueueItem {
+  std::uint32_t idx;
+};
+
+struct AdvanceQueueItem {
   std::uint32_t idx;
   std::int32_t volume;
   DirectionOctant direction_octant;
 };
 
+// Preserve compatibility with standalone sorting experiments that used the
+// original name before index-only event queues were split out.
+using EventQueueItem = AdvanceQueueItem;
+
+static_assert(sizeof(ParticleIndexQueueItem) == 4,
+              "Particle index queue items should remain four bytes");
+static_assert(sizeof(AdvanceQueueItem) == 12,
+              "Update the queue-memory accounting if advance items change size");
+
 struct VolumeCompare {
   EVENT_SIM_HOST_DEVICE
-  bool operator()(const EventQueueItem& lhs, const EventQueueItem& rhs) const
+  bool operator()(const AdvanceQueueItem& lhs, const AdvanceQueueItem& rhs) const
   {
     return lhs.volume < rhs.volume;
   }
@@ -94,7 +109,7 @@ struct VolumeCompare {
 
 struct DirectionCompare {
   EVENT_SIM_HOST_DEVICE
-  bool operator()(const EventQueueItem& lhs, const EventQueueItem& rhs) const
+  bool operator()(const AdvanceQueueItem& lhs, const AdvanceQueueItem& rhs) const
   {
     return lhs.direction_octant < rhs.direction_octant;
   }
@@ -102,7 +117,7 @@ struct DirectionCompare {
 
 struct VolumeDirectionCompare {
   EVENT_SIM_HOST_DEVICE
-  bool operator()(const EventQueueItem& lhs, const EventQueueItem& rhs) const
+  bool operator()(const AdvanceQueueItem& lhs, const AdvanceQueueItem& rhs) const
   {
     if (lhs.volume != rhs.volume) {
       return lhs.volume < rhs.volume;
@@ -113,7 +128,7 @@ struct VolumeDirectionCompare {
 
 struct DirectionVolumeCompare {
   EVENT_SIM_HOST_DEVICE
-  bool operator()(const EventQueueItem& lhs, const EventQueueItem& rhs) const
+  bool operator()(const AdvanceQueueItem& lhs, const AdvanceQueueItem& rhs) const
   {
     if (lhs.direction_octant != rhs.direction_octant) {
       return lhs.direction_octant < rhs.direction_octant;
@@ -122,8 +137,8 @@ struct DirectionVolumeCompare {
   }
 };
 
-void thrust_sort_event_queue(EventQueueItem* begin,
-                             EventQueueItem* end,
+void thrust_sort_event_queue(AdvanceQueueItem* begin,
+                             AdvanceQueueItem* end,
                              ParticleSortMode mode,
                              int device_id);
 

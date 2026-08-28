@@ -9,7 +9,7 @@
 
 namespace {
 
-EventQueueItem item(std::uint32_t index, std::int32_t volume, DirectionOctant direction)
+AdvanceQueueItem item(std::uint32_t index, std::int32_t volume, DirectionOctant direction)
 {
   return {index, volume, direction};
 }

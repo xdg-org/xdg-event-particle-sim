@@ -25,7 +25,8 @@ struct LostParticleState {
   std::int32_t n_events {0};
 };
 
-using ParticleEventQueue = DeviceAppendQueue<EventQueueItem>;
+using AdvanceParticleQueue = DeviceAppendQueue<AdvanceQueueItem>;
+using ParticleIndexQueue = DeviceAppendQueue<ParticleIndexQueueItem>;
 using LostParticleBank = DeviceAppendQueue<LostParticleState>;
 
 struct EventSimulationData {
@@ -75,9 +76,9 @@ struct EventSimulationData {
   int gpu_id {0};
   int host_id {omp_get_initial_device()};
   XDGRayHitBuffer ray_hits;
-  ParticleEventQueue advance_particle_queue;
-  ParticleEventQueue surface_crossing_queue;
-  ParticleEventQueue collision_queue;
+  AdvanceParticleQueue advance_particle_queue;
+  ParticleIndexQueue surface_crossing_queue;
+  ParticleIndexQueue collision_queue;
   Profiling profiling;
 
   std::vector<RayLaunchProfilingRecord> host_ray_launch_records_;

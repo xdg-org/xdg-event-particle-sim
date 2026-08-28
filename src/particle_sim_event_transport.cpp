@@ -14,7 +14,7 @@ using namespace xdg;
 
 namespace {
 
-std::int32_t count_active_queued_volumes(const ParticleEventQueue::DD& advance_queue,
+std::int32_t count_active_queued_volumes(const AdvanceParticleQueue::DD& advance_queue,
                                          int num_rays,
                                          std::uint64_t* device_last_queried_launch_by_volume,
                                          std::uint64_t launch_index,
@@ -466,9 +466,9 @@ void process_advance_particle_events(EventSimulationData& sim_data)
     device_cell_tracks[track_volume] += track_length;
 
     if (p.collision_distance_ < p.surface_hit_distance_) {
-      collision_queue.thread_safe_append({particle_idx, p.volume_});
+      collision_queue.thread_safe_append({particle_idx});
     } else {
-      surface_crossing_queue.thread_safe_append({particle_idx, p.volume_});
+      surface_crossing_queue.thread_safe_append({particle_idx});
     }
   }
   timer.stop();
