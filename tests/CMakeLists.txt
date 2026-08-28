@@ -1,6 +1,6 @@
 set(TEST_NAMES
     test_event_sim
-    test_particle_sorting.cpp
+    test_particle_sorting
 )
 
 foreach(test ${TEST_NAMES})

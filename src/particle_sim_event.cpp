@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
       std::cout, lost_particle_output, sim_data);
 
     if (!sim_data.host_lost_particles_.empty()) {
-      xdg->bvh_diagnostics(sim_data.host_lost_particles_.front().volume);
+     // xdg->bvh_diagnostics(sim_data.host_lost_particles_.front().volume);
     }
 
     std::cout << "Exiting early after detecting a BVH traversal failure.\n";
