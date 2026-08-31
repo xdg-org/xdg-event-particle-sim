@@ -410,6 +410,7 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   auto collision_queue = sim_data.collision_queue.get_device_data();
   const double mfp = sim_data.mfp_;
   const int gpu_id = sim_data.gpu_id;
+  const bool use_collision_distance_limit = !sim_data.exit_on_bvh_failure_;
   double launch_ray_sort_s = 0.0;
 
   Timer timer;
@@ -439,10 +440,12 @@ void process_advance_particle_events(EventSimulationData& sim_data)
 
   #pragma omp target teams distribute parallel for device(gpu_id) \
     is_device_ptr(device_particles, ray_hits) \
-    firstprivate(advance_queue)
+    firstprivate(advance_queue, mfp, use_collision_distance_limit)
   for (int i = 0; i < n_advance; ++i) {
     const uint32_t particle_idx = advance_queue.data[i].idx;
     EventParticle& p = device_particles[particle_idx];
+
+    p.sample_collision_distance(mfp);
 
     ray_hits[i].origin[0] = p.r_.x;
     ray_hits[i].origin[1] = p.r_.y;
@@ -451,7 +454,9 @@ void process_advance_particle_events(EventSimulationData& sim_data)
     ray_hits[i].direction[1] = p.u_.y;
     ray_hits[i].direction[2] = p.u_.z;
     ray_hits[i].t_min = 0.0;
-    ray_hits[i].t_max = INFTY;
+    ray_hits[i].t_max = use_collision_distance_limit
+                      ? p.collision_distance_ + TINY_BIT
+                      : INFTY;
     ray_hits[i].volume = p.volume_;
     ray_hits[i].last_hit_primitive = ID_NONE;
     ray_hits[i].distance = INFTY;
@@ -546,19 +551,17 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   #pragma omp target teams distribute parallel for device(gpu_id) \
     is_device_ptr(device_particles, ray_hits, device_cell_tracks) \
     firstprivate(advance_queue, surface_crossing_queue, collision_queue, \
-                 record_lost_particles, lost_particle_bank, mfp)
+                 use_collision_distance_limit, record_lost_particles, \
+                 lost_particle_bank)
   for (int i = 0; i < n_advance; i++) {
     const uint32_t particle_idx = advance_queue.data[i].idx;
     EventParticle& p = device_particles[particle_idx];
     const XDGRayHit& hit = ray_hits[i];
 
-    if (hit.distance == 0.0) {
-      p.alive_ = false;
-      p.stuck_ = true;
-      continue;
-    }
+    const bool surface_before_collision =
+      hit.surface != ID_NONE && hit.distance <= p.collision_distance_;
 
-    if (hit.surface == ID_NONE) {
+    if (!use_collision_distance_limit && hit.surface == ID_NONE) {
       p.alive_ = false;
       p.lost_ = true;
       if (record_lost_particles) {
@@ -575,13 +578,28 @@ void process_advance_particle_events(EventSimulationData& sim_data)
       continue;
     }
 
-    p.store_surface_crossing(hit.surface,
-                             hit.distance,
-                             hit.next_volume,
-                             static_cast<SurfaceBoundaryCondition>(hit.boundary_condition),
-                             hit.normal);
+    if (surface_before_collision && hit.distance == 0.0) {
+      p.alive_ = false;
+      p.stuck_ = true;
+      continue;
+    }
 
-    p.sample_collision_distance(mfp);
+    if (surface_before_collision) {
+      p.store_surface_crossing(
+        hit.surface,
+        hit.distance,
+        hit.next_volume,
+        static_cast<SurfaceBoundaryCondition>(hit.boundary_condition),
+        hit.normal);
+    } else {
+      // A bounded miss means the sampled collision occurs before the next
+      // surface. Clear any surface distance retained from the previous flight
+      // so advance() selects the collision distance.
+      p.surface_hit_ = ID_NONE;
+      p.surface_hit_distance_ = INFTY;
+      p.next_volume_ = ID_NONE;
+      p.boundary_condition_ = UNSET;
+    }
 
     // Get the volume to score and the tracklength to add
     const MeshID track_volume = p.volume_;
@@ -592,10 +610,10 @@ void process_advance_particle_events(EventSimulationData& sim_data)
     #pragma omp atomic update
     device_cell_tracks[track_volume] += track_length;
 
-    if (p.collision_distance_ < p.surface_hit_distance_) {
-      collision_queue.thread_safe_append({particle_idx});
-    } else {
+    if (surface_before_collision) {
       surface_crossing_queue.thread_safe_append({particle_idx});
+    } else {
+      collision_queue.thread_safe_append({particle_idx});
     }
   }
   timer.stop();
