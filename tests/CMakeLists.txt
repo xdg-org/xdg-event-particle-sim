@@ -15,6 +15,15 @@ foreach(test ${TEST_NAMES})
         EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
 endforeach()
 
+add_executable(test_history_sim test_main.cpp test_history_sim.cpp)
+target_compile_features(test_history_sim PRIVATE cxx_std_17)
+target_link_libraries(test_history_sim PRIVATE history-sim-core Catch2::Catch2)
+
+catch_discover_tests(test_history_sim
+    PROPERTIES
+    TEST_PREFIX "test_history_sim::"
+    EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
+
 set(
 TEST_FILES
 pwr_pincell.h5m

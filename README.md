@@ -1,16 +1,18 @@
 # xdg-event-particle-sim
 
-A basic GPU event-based pseudo particle transport simulation application for
-mocking neutral-particle transport against CAD models with the XDG library. This
-application acts as a mock interface for XDG's GPU API for future particle
-transport codes wishing to use XDG for CAD transport. GPU sorting of event
-queues by volume, direction octant, or compound combinations of the two is
-provided through CUDA or HIP Thrust.
+Pseudo particle transport applications for mocking neutral-particle transport
+against CAD models with the XDG library. The primary application uses a GPU
+event-based algorithm and acts as a mock interface for XDG's GPU API. A second
+history-based CPU application provides an Embree reference for performance and
+cell track-length comparisons. GPU sorting of event queues by volume, direction
+octant, or compound combinations of the two is provided through CUDA or HIP
+Thrust.
 
 ## Building
 
 This application is built against an installed XDG package. Build and install
-XDG with cuBQL support first, then point this project at that installation.
+XDG with cuBQL and Embree support first, then point this project at that
+installation.
 The XDG build uses XDG's `cubql_llvm_ada` preset, while this standalone
 application uses its own `llvm_ada` preset.
 
@@ -51,6 +53,25 @@ Run example:
 
 `--sort-mode` accepts `disabled`, `volume`, `direction`, `volume-direction`, or
 `direction-volume`. Compound mode names list the primary key first.
+
+Run the comparable history-based CPU application with Embree:
+
+```bash
+OMP_NUM_THREADS=28 \
+./build/llvm_ada/xdg-particle-sim-history <mesh.h5m> \
+  --mesh-library MOAB \
+  --rt-library EMBREE
+```
+
+Both executables use the same particle state, random-number generator, source,
+unbounded surface-query ordering, collision sampling, and cell track-length
+CSV format. Their `--format csv` summaries also share one schema so results can
+be combined directly. Use the same `--seed`, `--n-particles`, `--max-events`,
+and `--mfp` values for a verification run.
+
+For performance comparisons, use `profile_transport_throughput_rays_per_s` for
+both algorithms. The GPU-only `profile_total_ray_throughput_rays_per_s` field
+measures the batched ray-trace phase rather than the complete transport loop.
 
 ## Plotting Ray Launch Data
 
