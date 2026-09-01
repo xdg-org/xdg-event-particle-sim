@@ -36,6 +36,10 @@ int main(int argc, char** argv) {
       .default_value(1000u)
       .help("Maximum number of events per particle").scan<'u', uint32_t>();
 
+  args.add_argument("-s", "--seed")
+      .default_value(42u)
+      .help("Base random-number seed").scan<'u', uint32_t>();
+
   args.add_argument("-g", "--ipc-graveyard")
       .default_value(false)
       .implicit_value(true)
@@ -206,6 +210,7 @@ int main(int argc, char** argv) {
   sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
   sim_data.n_particles_ = args.get<uint32_t>("--n-particles");
   sim_data.max_events_ = args.get<uint32_t>("--max-events");
+  sim_data.seed_ = args.get<uint32_t>("--seed");
   sim_data.record_lost_particles_ = true;
   sim_data.max_lost_particle_records_ = max_lost_particle_records;
   sim_data.exit_on_bvh_failure_ = exit_on_bvh_failure;
@@ -256,7 +261,8 @@ int main(int argc, char** argv) {
 
   // Write cell track-length tallies to CSV
   const std::string cell_track_output = args.get<std::string>("--cell-track-output");
-  event_sim_output::write_cell_track_csv(cell_track_output, mm->volumes(), sim_data);
+  event_sim_output::write_cell_track_csv(
+    cell_track_output, mm->volumes(), sim_data.cell_tracks);
 
   // Write summary metadata and simulation statistics to stdout in the specified format
   event_sim_output::write_summary(std::cout, output_format, summary_metadata, sim_data);

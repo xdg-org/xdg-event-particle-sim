@@ -112,8 +112,39 @@ target_link_libraries(event-sim-core
     fmt::fmt
 )
 
-add_executable(xdg-particle-sim-event
+add_library(history-sim-core STATIC
+  src/particle_sim_history_transport.cpp
+)
+
+target_compile_features(history-sim-core PUBLIC cxx_std_17)
+
+target_include_directories(history-sim-core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(history-sim-core
+  PUBLIC
+    xdg::xdg
+    OpenMP::OpenMP_CXX
+)
+
+add_library(particle-sim-output STATIC
   src/event_sim_output.cpp
+)
+
+target_compile_features(particle-sim-output PUBLIC cxx_std_17)
+
+target_include_directories(particle-sim-output PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(particle-sim-output
+  PUBLIC
+    xdg::xdg
+    fmt::fmt
+)
+
+add_executable(xdg-particle-sim-event
   src/particle_sim_event.cpp
 )
 
@@ -121,7 +152,19 @@ target_compile_features(xdg-particle-sim-event PRIVATE cxx_std_17)
 
 target_link_libraries(xdg-particle-sim-event PRIVATE
   event-sim-core
-  fmt::fmt
+  particle-sim-output
+  argparse::argparse
+)
+
+add_executable(xdg-particle-sim-history
+  src/particle_sim_history.cpp
+)
+
+target_compile_features(xdg-particle-sim-history PRIVATE cxx_std_17)
+
+target_link_libraries(xdg-particle-sim-history PRIVATE
+  history-sim-core
+  particle-sim-output
   argparse::argparse
 )
 
@@ -143,7 +186,9 @@ if(EVENT_SIM_BUILD_TESTS)
   add_subdirectory("tests")
 endif()
 
-install(TARGETS xdg-particle-sim-event
+install(TARGETS
+  xdg-particle-sim-event
+  xdg-particle-sim-history
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
