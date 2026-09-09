@@ -1,12 +1,44 @@
 #!/usr/bin/env python3
 import argparse
-import math
+import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
+from matplotlib import font_manager
 from matplotlib.colors import LogNorm, Normalize
+
+
+PAPER_FONT_SIZE_PT = 10.5
+PAPER_OCCUPANCY_WIDTH_IN = 4.4
+PAPER_OCCUPANCY_HEIGHT_IN = 2.75
+PAPER_OCCUPANCY_OUTPUT = Path("atr_ray_volume_occupancy.pdf")
+
+if not any(
+    font.name == "Times New Roman" for font in font_manager.fontManager.ttflist
+):
+    warnings.warn(
+        "Times New Roman is not installed; figures will use the Tinos "
+        "fallback and must be regenerated once Times New Roman is available.",
+        stacklevel=1,
+    )
+
+plt.rcParams.update({
+    "font.family": "serif",
+    # Prefer the required face. Tinos is a metrically compatible fallback for
+    # systems on which Times New Roman has not been installed.
+    "font.serif": ["Times New Roman", "Times", "Tinos"],
+    "font.size": PAPER_FONT_SIZE_PT,
+    "axes.titlesize": PAPER_FONT_SIZE_PT,
+    "axes.labelsize": PAPER_FONT_SIZE_PT,
+    "xtick.labelsize": PAPER_FONT_SIZE_PT,
+    "ytick.labelsize": PAPER_FONT_SIZE_PT,
+    "legend.fontsize": PAPER_FONT_SIZE_PT,
+    "legend.title_fontsize": PAPER_FONT_SIZE_PT,
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+    "svg.fonttype": "none",
+})
 
 
 EVENT_TYPE_ORDER = ["initial", "collision", "surface_crossing", "mixed", "unlabelled"]
@@ -40,6 +72,13 @@ def plot_title(title, csv_title):
 def plot_filename(name, csv_stem, output_directory=None):
     filename = f"{csv_stem}_{name}.png"
     return Path(output_directory, filename) if output_directory else Path(filename)
+
+
+def save_plot(fig, name, csv_stem, output_directory=None, *, tight=True):
+    png_filename = plot_filename(name, csv_stem, output_directory)
+    save_options = {"bbox_inches": "tight"} if tight else {}
+    fig.savefig(png_filename, dpi=300, **save_options)
+    fig.savefig(png_filename.with_suffix(".pdf"), **save_options)
 
 
 def process_ray_launches(ray_launches):
@@ -113,7 +152,7 @@ def plot_ray_throughput_by_launch(ray_launches, csv_title, csv_stem):
     ax.set_xlabel("Launch index")
     ax.set_ylabel("Ray throughput (million rays/s)")
     ax.legend(title="Event source")
-    fig.savefig(plot_filename("ray_throughput_by_launch", csv_stem), dpi=200, bbox_inches="tight")
+    save_plot(fig, "ray_throughput_by_launch", csv_stem)
     plt.show()
 
 
@@ -134,7 +173,7 @@ def plot_ray_throughput_by_active_volumes_and_launch_size(ray_launches, csv_titl
     ax.set_ylabel("Ray throughput (million rays/s)")
     fig.colorbar(points, ax=ax, label="Launch size (rays, log scale)")
     ax.legend(title="Event source")
-    fig.savefig(plot_filename("ray_throughput_by_active_volumes_and_launch_size", csv_stem), dpi=200, bbox_inches="tight")
+    save_plot(fig, "ray_throughput_by_active_volumes_and_launch_size", csv_stem)
     plt.show()
 
 
@@ -154,7 +193,7 @@ def plot_ray_trace_time_by_launch_size_and_active_volumes(ray_launches, csv_titl
     ax.set_ylabel("Ray trace time (s)")
     fig.colorbar(points, ax=ax, label="Active volumes")
     ax.legend(title="Event source")
-    fig.savefig(plot_filename("ray_trace_time_by_launch_size_and_active_volumes", csv_stem), dpi=200, bbox_inches="tight")
+    save_plot(fig, "ray_trace_time_by_launch_size_and_active_volumes", csv_stem)
     plt.show()
 
 
@@ -171,7 +210,7 @@ def plot_active_volumes_by_launch(ray_launches, csv_title, csv_stem):
     ax.set_xlabel("Launch index")
     ax.set_ylabel("Active volumes")
     ax.legend(title="Event source")
-    fig.savefig(plot_filename("active_volumes_by_launch", csv_stem), dpi=200, bbox_inches="tight")
+    save_plot(fig, "active_volumes_by_launch", csv_stem)
     plt.show()
 
 
@@ -210,269 +249,90 @@ def plot_ray_launch_summary(
 
     fig.suptitle(plot_title("Ray Launch Profiling Summary", csv_title))
     fig.colorbar(throughput_points, ax=axes, label="Launch size (rays, log scale)")
-    fig.savefig(
-        plot_filename("ray_launch_profile_summary", csv_stem, output_directory),
-        dpi=200,
-        bbox_inches="tight",
-    )
+    save_plot(fig, "ray_launch_profile_summary", csv_stem, output_directory)
     if show:
         plt.show()
     else:
         plt.close(fig)
 
 
-def process_volume_occupancies(volume_occupancies, ray_launches):
-    required_columns = {
-        "launch_index",
-        "num_model_volumes",
-        "volume_id",
-        "num_rays",
-    }
-    missing_columns = required_columns.difference(volume_occupancies.columns)
-    if missing_columns:
-        missing = ", ".join(sorted(missing_columns))
-        raise ValueError(f"Volume occupancy CSV is missing columns: {missing}")
+def select_volume_occupancy_launch(ray_launches, requested_launch_index):
+    if requested_launch_index is not None:
+        return requested_launch_index
 
-    launch_columns = ["launch_index", "num_rays", "event_type"]
-    source_count_columns = [
-        "num_initial_rays",
-        "num_collision_rays",
-        "num_surface_crossing_rays",
-    ]
-    launch_columns.extend(
-        column for column in source_count_columns if column in ray_launches.columns
+    candidates = ray_launches.sort_values(
+        ["num_active_volumes", "launch_index"], kind="stable"
     )
-    launch_metadata = ray_launches[launch_columns].rename(
-        columns={"num_rays": "num_launch_rays"}
+    half_ray_work = 0.5 * candidates["num_rays"].sum()
+    return int(
+        candidates.loc[
+            candidates["num_rays"].cumsum() >= half_ray_work,
+            "launch_index",
+        ].iloc[0]
     )
-    processed = volume_occupancies.merge(
-        launch_metadata,
-        on="launch_index",
-        how="left",
-        validate="many_to_one",
-    )
-    if processed["num_launch_rays"].isna().any():
-        raise ValueError("Volume occupancy CSV contains an unknown launch index")
 
-    occupancy_totals = processed.groupby("launch_index")["num_rays"].sum()
-    launch_totals = launch_metadata.set_index("launch_index")["num_launch_rays"]
-    mismatched = occupancy_totals[occupancy_totals != launch_totals.loc[occupancy_totals.index]]
-    if not mismatched.empty:
-        launch_index = int(mismatched.index[0])
+
+def plot_volume_occupancy(
+    volume_occupancies, ray_launches, requested_launch_index=None
+):
+    launch_index = select_volume_occupancy_launch(
+        ray_launches, requested_launch_index
+    )
+    occupancy = volume_occupancies.query("launch_index == @launch_index")
+    if occupancy.empty:
+        raise ValueError(f"No volume occupancy data for launch {launch_index}")
+
+    num_model_volumes = int(occupancy["num_model_volumes"].iloc[0])
+    volume_ids = occupancy["volume_id"]
+    counts = occupancy["num_rays"]
+    expected_rays = int(
+        ray_launches.set_index("launch_index").at[launch_index, "num_rays"]
+    )
+    if counts.sum() != expected_rays:
         raise ValueError(
             f"Volume occupancies for launch {launch_index} do not sum to its ray count"
         )
 
-    return processed
-
-
-def ray_work_median_launch(ray_launches):
-    ordered = ray_launches.sort_values("launch_index")
-    cumulative_rays = ordered["num_rays"].cumsum()
-    median_position = 0.5 * ordered["num_rays"].sum()
-    return int(ordered.loc[cumulative_rays >= median_position, "launch_index"].iloc[0])
-
-
-def select_occupancy_launch(ray_launches, requested_launch_index=None):
-    if requested_launch_index is None:
-        return ray_work_median_launch(ray_launches)
-    if requested_launch_index not in set(ray_launches["launch_index"]):
-        raise ValueError(f"Launch {requested_launch_index} is not present in the profiling data")
-    return requested_launch_index
-
-
-def launch_volume_counts(volume_occupancies, launch_index):
-    launch = volume_occupancies[
-        volume_occupancies["launch_index"] == launch_index
-    ]
-    if launch.empty:
-        raise ValueError(f"No volume occupancy data found for launch {launch_index}")
-
-    num_model_volumes = int(launch["num_model_volumes"].iloc[0])
-    if not (launch["num_model_volumes"] == num_model_volumes).all():
-        raise ValueError(f"Inconsistent model volume counts for launch {launch_index}")
-    volume_ids = launch["volume_id"].to_numpy()
-    counts = launch["num_rays"].to_numpy(dtype=np.int64)
-    inactive_volumes = num_model_volumes - len(counts)
-    if inactive_volumes < 0:
-        raise ValueError(f"Launch {launch_index} has more occupied volumes than the model")
-    return volume_ids, counts, inactive_volumes
-
-
-def draw_occupancy_histogram(ax, volume_ids, counts):
-    ax.vlines(volume_ids, 0, counts, color="tab:blue", linewidth=0.8)
-    ax.set_ylim(bottom=0)
-    ax.set_xlabel("Volume ID")
-    ax.set_ylabel("Queued rays")
-    ax.grid(axis="y", alpha=0.25)
-
-
-def launch_description(ray_launches, launch_index):
-    launch = ray_launches[ray_launches["launch_index"] == launch_index].iloc[0]
-    event_label = EVENT_TYPE_LABELS.get(
-        launch["event_type"], str(launch["event_type"]).replace("_", " ").title()
-    )
-    return f"Launch {launch_index}: {event_label}, {int(launch['num_rays']):,} rays"
-
-
-def plot_volume_occupancy_histogram(
-    volume_occupancies, ray_launches, launch_index, csv_title, csv_stem
-):
-    volume_ids, counts, inactive_volumes = launch_volume_counts(
-        volume_occupancies, launch_index
-    )
-    fig, ax = plt.subplots(figsize=(10, 5))
-    draw_occupancy_histogram(ax, volume_ids, counts)
-    ax.set_title(plot_title("Volume Occupancy by Volume ID", csv_title))
-    ax.text(
-        0.99,
-        0.97,
-        launch_description(ray_launches, launch_index),
-        transform=ax.transAxes,
-        ha="right",
-        va="top",
-    )
-    fig.savefig(
-        plot_filename("volume_occupancy_histogram", csv_stem),
-        dpi=200,
-        bbox_inches="tight",
-    )
-    plt.show()
-
-
-def plot_ranked_volume_occupancy(
-    volume_occupancies, ray_launches, launch_index, csv_title, csv_stem
-):
-    _, counts, inactive_volumes = launch_volume_counts(volume_occupancies, launch_index)
-    ranked_counts = np.sort(counts)[::-1]
-    ranks = np.arange(1, len(ranked_counts) + 1)
-    fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(ranks, ranked_counts, color="tab:blue")
-    ax.set_title(plot_title("Ranked Volume Occupancy", csv_title))
-    ax.set_xlabel("Occupied volume rank")
-    ax.set_ylabel("Queued rays")
-    ax.grid(axis="y", alpha=0.25)
-    ax.text(
-        0.99,
-        0.97,
-        f"{launch_description(ray_launches, launch_index)}\n"
-        f"Inactive volumes: {inactive_volumes:,}",
-        transform=ax.transAxes,
-        ha="right",
-        va="top",
-    )
-    fig.savefig(
-        plot_filename("ranked_volume_occupancy", csv_stem),
-        dpi=200,
-        bbox_inches="tight",
-    )
-    plt.show()
-
-
-def plot_cumulative_volume_coverage(
-    volume_occupancies, ray_launches, launch_index, csv_title, csv_stem
-):
-    _, counts, inactive_volumes = launch_volume_counts(volume_occupancies, launch_index)
-    ranked_counts = np.sort(counts)[::-1]
-    cumulative_fraction = np.cumsum(ranked_counts) / ranked_counts.sum()
-    ranks = np.arange(1, len(ranked_counts) + 1)
-    fig, ax = plt.subplots(figsize=(9, 5))
-    ax.plot(ranks, cumulative_fraction, color="tab:blue")
-    ax.axhline(0.5, color="tab:gray", linestyle="--", linewidth=1)
-    ax.axhline(0.9, color="tab:gray", linestyle="--", linewidth=1)
-    ax.set_ylim(0.0, 1.01)
-    ax.set_title(plot_title("Cumulative Ray Coverage by Volume", csv_title))
-    ax.set_xlabel("Highest-occupancy volumes included")
-    ax.set_ylabel("Fraction of queued rays")
-    ax.grid(alpha=0.25)
-    ax.text(
-        0.99,
-        0.03,
-        f"{launch_description(ray_launches, launch_index)}\n"
-        f"Inactive volumes: {inactive_volumes:,}",
-        transform=ax.transAxes,
-        ha="right",
-        va="bottom",
-    )
-    fig.savefig(
-        plot_filename("cumulative_volume_coverage", csv_stem),
-        dpi=200,
-        bbox_inches="tight",
-    )
-    plt.show()
-
-
-def source_representative_launch(ray_launches, count_column):
-    if count_column not in ray_launches or ray_launches[count_column].max() <= 0:
-        return None
-    fractions = ray_launches[count_column] / ray_launches["num_rays"]
-    candidates = ray_launches.assign(source_fraction=fractions).sort_values(
-        ["source_fraction", "launch_index"], ascending=[False, True]
-    )
-    return int(candidates.iloc[0]["launch_index"])
-
-
-def selected_occupancy_launches(ray_launches, representative_launch_index):
-    candidates = [
-        ("Initial", int(ray_launches["launch_index"].min())),
-        (
-            "Collision-heavy",
-            source_representative_launch(ray_launches, "num_collision_rays"),
-        ),
-        (
-            "Surface-crossing-heavy",
-            source_representative_launch(
-                ray_launches, "num_surface_crossing_rays"
-            ),
-        ),
-        ("Ray-work median", representative_launch_index),
-        ("Final", int(ray_launches["launch_index"].max())),
-    ]
-    selected = []
-    seen = set()
-    for label, launch_index in candidates:
-        if launch_index is not None and launch_index not in seen:
-            selected.append((label, launch_index))
-            seen.add(launch_index)
-    return selected
-
-
-def plot_selected_launch_occupancies(
-    volume_occupancies,
-    ray_launches,
-    representative_launch_index,
-    csv_title,
-    csv_stem,
-):
-    selected = selected_occupancy_launches(
-        ray_launches, representative_launch_index
-    )
-    num_columns = min(3, len(selected))
-    num_rows = math.ceil(len(selected) / num_columns)
-    fig, axes = plt.subplots(
-        num_rows,
-        num_columns,
-        figsize=(5 * num_columns, 4 * num_rows),
-        squeeze=False,
+    fig, ax = plt.subplots(
+        figsize=(PAPER_OCCUPANCY_WIDTH_IN, PAPER_OCCUPANCY_HEIGHT_IN),
         layout="constrained",
     )
-    for ax, (selection_label, launch_index) in zip(axes.flat, selected):
-        volume_ids, counts, inactive_volumes = launch_volume_counts(
-            volume_occupancies, launch_index
+    ax.vlines(volume_ids, 1, counts, color="tab:blue", linewidth=0.8)
+    for threshold, hardware, color, linestyle in (
+        (32, "NVIDIA warp", "tab:orange", "--"),
+        (64, "AMD wavefront", "tab:green", ":"),
+    ):
+        num_volumes = int((counts >= threshold).sum())
+        ax.axhline(
+            threshold,
+            color=color,
+            linestyle=linestyle,
+            linewidth=1.2,
+            label=f"≥{threshold} rays: {num_volumes:,} volumes ({hardware})",
         )
-        draw_occupancy_histogram(ax, volume_ids, counts)
-        ax.set_title(
-            f"{selection_label}\n{launch_description(ray_launches, launch_index)}"
-        )
-    for ax in list(axes.flat)[len(selected):]:
-        ax.set_visible(False)
 
-    fig.suptitle(plot_title("Selected Launch Volume Occupancies", csv_title))
-    fig.savefig(
-        plot_filename("selected_launch_volume_occupancies", csv_stem),
-        dpi=200,
-        bbox_inches="tight",
+    ax.set(
+        yscale="log",
+        ylim=(1, None),
+        xlabel="Volume ID",
+        ylabel="Queued rays",
+        title=(
+            "Per-volume ray occupancy in a representative launch\n"
+            f"{len(counts):,} of {num_model_volumes:,} volumes active"
+        ),
     )
+    ax.grid(axis="y", which="major", alpha=0.25)
+    ax.legend(
+        loc="upper right",
+        fontsize=8,
+        framealpha=0.85,
+        handlelength=1.5,
+        handletextpad=0.4,
+        labelspacing=0.25,
+        borderpad=0.3,
+    )
+    fig.savefig(PAPER_OCCUPANCY_OUTPUT)
+    fig.savefig(PAPER_OCCUPANCY_OUTPUT.with_suffix(".png"), dpi=300)
     plt.show()
 
 
@@ -488,7 +348,10 @@ def main():
     parser.add_argument(
         "--occupancy-launch-index",
         type=int,
-        help="Launch to use for the individual occupancy plots; defaults to the ray-work median",
+        help=(
+            "Launch to use for the individual occupancy plots; defaults to "
+            "the ray-weighted median active-volume launch"
+        ),
     )
     args = parser.parse_args()
     csv_path = Path(args.csv)
@@ -504,41 +367,10 @@ def main():
     plot_ray_launch_summary(processed_ray_launches, csv_title, csv_stem)
 
     if args.volume_occupancy_csv:
-        raw_volume_occupancies = pd.read_csv(args.volume_occupancy_csv)
-        volume_occupancies = process_volume_occupancies(
-            raw_volume_occupancies, processed_ray_launches
-        )
-        launch_index = select_occupancy_launch(
-            processed_ray_launches, args.occupancy_launch_index
-        )
-        occupancy_title = Path(args.volume_occupancy_csv).name
-        plot_volume_occupancy_histogram(
-            volume_occupancies,
+        plot_volume_occupancy(
+            pd.read_csv(args.volume_occupancy_csv),
             processed_ray_launches,
-            launch_index,
-            occupancy_title,
-            csv_stem,
-        )
-        plot_ranked_volume_occupancy(
-            volume_occupancies,
-            processed_ray_launches,
-            launch_index,
-            occupancy_title,
-            csv_stem,
-        )
-        plot_cumulative_volume_coverage(
-            volume_occupancies,
-            processed_ray_launches,
-            launch_index,
-            occupancy_title,
-            csv_stem,
-        )
-        plot_selected_launch_occupancies(
-            volume_occupancies,
-            processed_ray_launches,
-            launch_index,
-            occupancy_title,
-            csv_stem,
+            args.occupancy_launch_index,
         )
 
 
