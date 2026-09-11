@@ -39,6 +39,33 @@
       }
     },
     {
+      "name": "llvm_a100",
+      "inherits": ["llvm"],
+      "displayName": "LLVM OpenMP offload NVIDIA A100",
+      "cacheVariables": {
+        "CMAKE_CUDA_COMPILER": "nvcc",
+        "CMAKE_CUDA_ARCHITECTURES": "80",
+        "EVENT_SIM_ENABLE_CUDA_THRUST_SORT": "ON"
+      },
+      "environment": {
+        "PRESET_CXX_FLAGS": "-fopenmp-targets=nvptx64 -Xopenmp-target=nvptx64 -march=sm_80"
+      }
+    },
+    {
+      "name": "llvm_mi355x",
+      "inherits": ["llvm"],
+      "displayName": "LLVM OpenMP offload AMD MI355X",
+      "cacheVariables": {
+        "OpenMP_CXX_FLAGS": "-fopenmp",
+        "OpenMP_CXX_LIB_NAMES": "omp",
+        "OpenMP_omp_LIBRARY": "$env{LLVM_OPENMP_RUNTIME_DIR}/libomp.so"
+      },
+      "environment": {
+        "LLVM_CXX_FLAGS": "-fopenmp",
+        "PRESET_CXX_FLAGS": "-fopenmp-targets=amdgcn-amd-amdhsa -Xopenmp-target=amdgcn-amd-amdhsa -march=gfx950"
+      }
+    },
+    {
       "name": "nvhpc",
       "inherits": ["base"],
       "cacheVariables": {
@@ -59,6 +86,14 @@
     {
       "name": "llvm_ada",
       "configurePreset": "llvm_ada"
+    },
+    {
+      "name": "llvm_a100",
+      "configurePreset": "llvm_a100"
+    },
+    {
+      "name": "llvm_mi355x",
+      "configurePreset": "llvm_mi355x"
     },
     {
       "name": "nvhpc_ada",
