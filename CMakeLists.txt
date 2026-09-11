@@ -20,10 +20,15 @@ find_package(XDG REQUIRED PATH_SUFFIXES lib/cmake)
 message(STATUS "Found XDG: ${XDG_DIR} (version ${XDG_VERSION})")
 
 find_package(OpenMP REQUIRED COMPONENTS CXX)
-find_package(fmt CONFIG REQUIRED)
 find_package(Git QUIET)
 
 set(VENDOR_PATHS)
+
+find_package(fmt CONFIG QUIET NO_SYSTEM_ENVIRONMENT_PATH)
+
+if(NOT fmt_FOUND)
+  list(APPEND VENDOR_PATHS vendor/fmt)
+endif()
 
 find_package(argparse CONFIG QUIET)
 
@@ -72,6 +77,11 @@ foreach(VENDOR_PATH IN LISTS VENDOR_PATHS)
     )
   endif()
 endforeach()
+
+if(NOT fmt_FOUND)
+  set(FMT_INSTALL OFF CACHE BOOL "Generate the fmt install target" FORCE)
+  add_subdirectory(vendor/fmt)
+endif()
 
 if(NOT argparse_FOUND)
   set(ARGPARSE_INSTALL OFF CACHE BOOL "" FORCE)
