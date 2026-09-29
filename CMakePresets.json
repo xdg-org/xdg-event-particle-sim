@@ -43,8 +43,9 @@
       "inherits": ["llvm"],
       "displayName": "LLVM OpenMP offload NVIDIA A100",
       "cacheVariables": {
-        "CMAKE_CUDA_COMPILER": "nvcc",
+        "CMAKE_CUDA_COMPILER": "/usr/local/software/cuda/11.8/bin/nvcc",
         "CMAKE_CUDA_ARCHITECTURES": "80",
+        "CUDAToolkit_ROOT": "/usr/local/software/cuda/11.8",
         "EVENT_SIM_ENABLE_CUDA_THRUST_SORT": "ON"
       },
       "environment": {
