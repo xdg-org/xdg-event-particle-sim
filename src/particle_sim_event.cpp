@@ -67,6 +67,16 @@ int main(int argc, char** argv) {
       .default_value("ray-launches.csv")
       .help("Output file for per-launch ray tracing profiling data");
 
+  args.add_argument("--enable-profiling-volume-occupancy")
+      .default_value(false)
+      .implicit_value(true)
+      .help("Collect per-launch queued-ray counts for every occupied volume; "
+            "also enables ray launch profiling");
+
+  args.add_argument("--volume-occupancy-profile-output")
+      .default_value("volume-occupancy.csv")
+      .help("Output file for per-launch volume occupancy profiling data");
+
   args.add_argument("--lost-particle-output")
       .default_value("lost-particles.csv")
       .help("Output file for lost particle state records");
@@ -204,7 +214,11 @@ int main(int argc, char** argv) {
   // update the mean free path
   sim_data.mfp_ = args.get<double>("--mfp");
 
-  sim_data.profile_ray_launches_ = args.get<bool>("--enable-profiling-ray-launch");
+  sim_data.profile_volume_occupancy_ =
+    args.get<bool>("--enable-profiling-volume-occupancy");
+  sim_data.profile_ray_launches_ =
+    args.get<bool>("--enable-profiling-ray-launch")
+    || sim_data.profile_volume_occupancy_;
   sim_data.particle_sort_mode_ = particle_sort_mode;
   sim_data.minimum_sort_items_ = minimum_sort_items;
   sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
@@ -239,6 +253,12 @@ int main(int argc, char** argv) {
     const std::string ray_launch_profile_output =
       args.get<std::string>("--ray-launch-profile-output");
     event_sim_output::write_ray_launch_profile_csv(ray_launch_profile_output, sim_data);
+  }
+  if (sim_data.profile_volume_occupancy_) {
+    const std::string volume_occupancy_profile_output =
+      args.get<std::string>("--volume-occupancy-profile-output");
+    event_sim_output::write_volume_occupancy_profile_csv(
+      volume_occupancy_profile_output, sim_data);
   }
 
   event_sim_output::write_lost_particle_csv(lost_particle_output, sim_data);

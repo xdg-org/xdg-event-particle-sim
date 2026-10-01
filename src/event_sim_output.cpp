@@ -89,6 +89,20 @@ maximum_cell_track(const std::vector<std::pair<MeshID, double>>& ranked)
   };
 }
 
+const char* event_type(const EventSimulationData::RayLaunchProfilingRecord& launch)
+{
+  if (launch.num_initial_rays == launch.num_rays) {
+    return "initial";
+  }
+  if (launch.num_collision_rays == launch.num_rays) {
+    return "collision";
+  }
+  if (launch.num_surface_crossing_rays == launch.num_rays) {
+    return "surface_crossing";
+  }
+  return "mixed";
+}
+
 } // namespace
 
 namespace event_sim_output {
@@ -331,16 +345,42 @@ void write_ray_launch_profile_csv(const std::string& filename,
     fatal_error("Failed to open ray launch profiling output '{}'.", filename);
   }
 
-  output << "launch_index,num_rays,num_active_volumes,ray_sort_s,ray_trace_s,"
-            "ray_throughput_rays_per_s\n";
+  output << "launch_index,num_rays,num_active_volumes,event_type,"
+            "num_initial_rays,num_collision_rays,num_surface_crossing_rays,"
+            "ray_sort_s,ray_trace_s,ray_throughput_rays_per_s\n";
   for (const auto& launch : sim_data.host_ray_launch_records_) {
-    output << fmt::format("{},{},{},{:.17g},{:.17g},{:.17g}\n",
+    output << fmt::format("{},{},{},{},{},{},{},{:.17g},{:.17g},{:.17g}\n",
                           launch.launch_index,
                           launch.num_rays,
                           launch.num_active_volumes,
+                          event_type(launch),
+                          launch.num_initial_rays,
+                          launch.num_collision_rays,
+                          launch.num_surface_crossing_rays,
                           launch.ray_sort_s,
                           launch.ray_trace_s,
                           launch.ray_throughput);
+  }
+}
+
+void write_volume_occupancy_profile_csv(const std::string& filename,
+                                        const EventSimulationData& sim_data)
+{
+  std::ofstream output(filename);
+  if (!output) {
+    fatal_error("Failed to open volume occupancy profiling output '{}'.", filename);
+  }
+
+  const auto num_model_volumes = sim_data.xdg_->mesh_manager()->num_volumes();
+  output << "launch_index,num_model_volumes,volume_id,num_rays\n";
+  for (const auto& launch : sim_data.host_ray_launch_records_) {
+    for (const auto& occupancy : launch.volume_occupancies) {
+      output << fmt::format("{},{},{},{}\n",
+                            launch.launch_index,
+                            num_model_volumes,
+                            occupancy.volume,
+                            occupancy.num_rays);
+    }
   }
 }
 

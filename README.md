@@ -83,7 +83,10 @@ measures the batched ray-trace phase rather than the complete transport loop.
 
 The `plot_ray_launches.py` script reads the per-launch CSV written by
 `--enable-profiling-ray-launch` and produces basic ray-tracing performance
-plots.
+plots. Each launch records how many rays were queued by initialization,
+collision, and surface-crossing events. Launches containing rays from only one
+source event are labelled `initial`, `collision`, or `surface_crossing`; all
+others are labelled `mixed`.
 
 Generate ray launch data:
 
@@ -100,6 +103,22 @@ Then run:
 ```bash
 python3 plot_ray_launches.py ray-launches.csv
 ```
+
+Collect per-volume queued-ray populations for every launch with:
+
+```bash
+./build/llvm_ada/xdg-particle-sim-event <mesh.h5m> \
+  --enable-profiling-volume-occupancy \
+  --ray-launch-profile-output ray-launches.csv \
+  --volume-occupancy-profile-output volume-occupancy.csv
+
+python3 plot_ray_launches.py ray-launches.csv \
+  --volume-occupancy-csv volume-occupancy.csv
+```
+
+Volume occupancy profiling implies ordinary ray-launch profiling. It writes
+only occupied volumes to the long-format occupancy CSV; the model volume count
+is retained so plots can reconstruct inactive volumes.
 
 ## Mean Free Path Sweeps
 

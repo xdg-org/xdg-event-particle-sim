@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include <omp.h>
@@ -45,6 +46,72 @@ std::int32_t count_active_queued_volumes(const AdvanceParticleQueue::DD& advance
   return num_active_volumes;
 }
 
+std::vector<EventSimulationData::RayLaunchProfilingRecord::VolumeOccupancy>
+measure_queued_volume_occupancy(
+  const AdvanceParticleQueue::DD& advance_queue,
+  int num_rays,
+  std::int32_t* device_queued_rays_by_volume,
+  std::vector<std::int32_t>& host_queued_rays_by_volume,
+  int gpu_id,
+  int host_id)
+{
+  #pragma omp target teams distribute parallel for device(gpu_id) \
+    is_device_ptr(device_queued_rays_by_volume) \
+    firstprivate(advance_queue)
+  for (int i = 0; i < num_rays; ++i) {
+    const MeshID volume = advance_queue.data[i].volume;
+
+    #pragma omp atomic update
+    device_queued_rays_by_volume[volume]++;
+  }
+
+  const std::size_t occupancy_bytes =
+    host_queued_rays_by_volume.size() * sizeof(std::int32_t);
+  if (omp_target_memcpy(host_queued_rays_by_volume.data(),
+                        device_queued_rays_by_volume,
+                        occupancy_bytes,
+                        0,
+                        0,
+                        host_id,
+                        gpu_id) != 0) {
+    fatal_error("Failed to copy queued ray volume occupancies to the host.");
+  }
+
+  std::vector<EventSimulationData::RayLaunchProfilingRecord::VolumeOccupancy>
+    occupancies;
+  std::uint64_t counted_rays = 0;
+  for (std::size_t volume = 0;
+       volume < host_queued_rays_by_volume.size();
+       ++volume) {
+    const std::int32_t volume_rays = host_queued_rays_by_volume[volume];
+    counted_rays += static_cast<std::uint64_t>(volume_rays);
+    if (volume_rays > 0) {
+      occupancies.push_back({static_cast<MeshID>(volume), volume_rays});
+    }
+  }
+
+  if (counted_rays != static_cast<std::uint64_t>(num_rays)) {
+    fatal_error("Volume occupancy counts contain {} rays, but the launch contains {}.",
+                counted_rays,
+                num_rays);
+  }
+
+  std::fill(host_queued_rays_by_volume.begin(),
+            host_queued_rays_by_volume.end(),
+            0);
+  if (omp_target_memcpy(device_queued_rays_by_volume,
+                        host_queued_rays_by_volume.data(),
+                        occupancy_bytes,
+                        0,
+                        0,
+                        gpu_id,
+                        host_id) != 0) {
+    fatal_error("Failed to reset queued ray volume occupancies.");
+  }
+
+  return occupancies;
+}
+
 void count_particle_states(
   const EventParticle* device_particles,
   int num_particles,
@@ -83,6 +150,10 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   sim_data.profiling = {};
   sim_data.profiling.xdg_setup_s = xdg_setup_s;
   sim_data.host_ray_launch_records_.clear();
+  sim_data.queued_initial_rays_ = 0;
+  sim_data.queued_collision_rays_ = 0;
+  sim_data.queued_surface_crossing_rays_ = 0;
+  sim_data.host_queued_rays_by_volume_.clear();
   sim_data.host_lost_particles_.clear();
   sim_data.stopped_on_bvh_failure_ = false;
 
@@ -161,6 +232,28 @@ void transport_particle_event_based(EventSimulationData& sim_data)
                       sim_data.host_id);
   }
 
+  if (sim_data.profile_volume_occupancy_) {
+    const std::size_t occupancy_table_size =
+      static_cast<std::size_t>(sim_data.xdg_->mesh_manager()->next_volume_id());
+    const std::size_t occupancy_table_bytes =
+      occupancy_table_size * sizeof(std::int32_t);
+    sim_data.host_queued_rays_by_volume_.assign(occupancy_table_size, 0);
+    sim_data.device_queued_rays_by_volume = static_cast<std::int32_t*>(
+      omp_target_alloc(occupancy_table_bytes, sim_data.gpu_id));
+    if (!sim_data.device_queued_rays_by_volume) {
+      fatal_error("Failed to allocate queued ray volume occupancy storage.");
+    }
+    if (omp_target_memcpy(sim_data.device_queued_rays_by_volume,
+                          sim_data.host_queued_rays_by_volume_.data(),
+                          occupancy_table_bytes,
+                          0,
+                          0,
+                          sim_data.gpu_id,
+                          sim_data.host_id) != 0) {
+      fatal_error("Failed to initialize queued ray volume occupancies.");
+    }
+  }
+
   process_init_events(sim_data);
 
   while (true) {
@@ -202,6 +295,11 @@ void transport_particle_event_based(EventSimulationData& sim_data)
   if (sim_data.device_last_queried_launch_by_volume) {
     omp_target_free(sim_data.device_last_queried_launch_by_volume, sim_data.gpu_id);
     sim_data.device_last_queried_launch_by_volume = nullptr;
+  }
+
+  if (sim_data.device_queued_rays_by_volume) {
+    omp_target_free(sim_data.device_queued_rays_by_volume, sim_data.gpu_id);
+    sim_data.device_queued_rays_by_volume = nullptr;
   }
 
   if (sim_data.record_lost_particles_) {
@@ -288,6 +386,7 @@ void process_init_events(EventSimulationData& sim_data)
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
+  sim_data.queued_initial_rays_ = sim_data.advance_particle_queue.size();
 }
 
 void process_advance_particle_events(EventSimulationData& sim_data)
@@ -393,19 +492,47 @@ void process_advance_particle_events(EventSimulationData& sim_data)
 
   if (sim_data.profile_ray_launches_) {
     const std::uint64_t launch_index = sim_data.profiling.ray_launches - 1;
-    const std::int32_t num_active_volumes = count_active_queued_volumes(advance_queue,
-                                                                        n_advance,
-                                                                        sim_data.device_last_queried_launch_by_volume,
-                                                                        launch_index,
-                                                                        gpu_id);
+    std::vector<EventSimulationData::RayLaunchProfilingRecord::VolumeOccupancy>
+      volume_occupancies;
+    std::int32_t num_active_volumes = 0;
+    if (sim_data.profile_volume_occupancy_) {
+      volume_occupancies = measure_queued_volume_occupancy(
+        advance_queue,
+        n_advance,
+        sim_data.device_queued_rays_by_volume,
+        sim_data.host_queued_rays_by_volume_,
+        gpu_id,
+        sim_data.host_id);
+      num_active_volumes = static_cast<std::int32_t>(volume_occupancies.size());
+    } else {
+      num_active_volumes = count_active_queued_volumes(
+        advance_queue,
+        n_advance,
+        sim_data.device_last_queried_launch_by_volume,
+        launch_index,
+        gpu_id);
+    }
+    const std::int32_t num_event_source_rays =
+      sim_data.queued_initial_rays_
+      + sim_data.queued_collision_rays_
+      + sim_data.queued_surface_crossing_rays_;
+    if (num_event_source_rays != n_advance) {
+      fatal_error("Advance launch contains {} rays, but event source counts total {}.",
+                  n_advance,
+                  num_event_source_rays);
+    }
 
     sim_data.host_ray_launch_records_.push_back({
       launch_index,
       n_advance,
       num_active_volumes,
+      sim_data.queued_initial_rays_,
+      sim_data.queued_collision_rays_,
+      sim_data.queued_surface_crossing_rays_,
       launch_ray_sort_s,
       launch_ray_trace_s,
-      launch_ray_throughput
+      launch_ray_throughput,
+      std::move(volume_occupancies)
     });
   }
 
@@ -477,6 +604,9 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   sim_data.surface_crossing_queue.sync_size_device_to_host();
   sim_data.collision_queue.sync_size_device_to_host();
   sim_data.advance_particle_queue.reset();
+  sim_data.queued_initial_rays_ = 0;
+  sim_data.queued_collision_rays_ = 0;
+  sim_data.queued_surface_crossing_rays_ = 0;
 
   total_timer.stop();
   sim_data.profiling.advance_total_s += total_timer.elapsed();
@@ -497,6 +627,7 @@ void process_collision_events(EventSimulationData& sim_data)
 
   auto advance_queue = sim_data.advance_particle_queue.get_device_data();
   auto collision_queue = sim_data.collision_queue.get_device_data();
+  const int previous_n_advance = sim_data.advance_particle_queue.size();
   const int gpu_id = sim_data.gpu_id;
   const int max_events = sim_data.max_events_;
 
@@ -517,6 +648,8 @@ void process_collision_events(EventSimulationData& sim_data)
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
+  sim_data.queued_collision_rays_ +=
+    sim_data.advance_particle_queue.size() - previous_n_advance;
   sim_data.collision_queue.reset();
   timer.stop();
   sim_data.profiling.collision_s += timer.elapsed();
@@ -537,6 +670,7 @@ void process_surface_crossing_events(EventSimulationData& sim_data)
 
   auto advance_queue = sim_data.advance_particle_queue.get_device_data();
   auto surface_crossing_queue = sim_data.surface_crossing_queue.get_device_data();
+  const int previous_n_advance = sim_data.advance_particle_queue.size();
   const int gpu_id = sim_data.gpu_id;
   const int max_events = sim_data.max_events_;
 
@@ -556,6 +690,8 @@ void process_surface_crossing_events(EventSimulationData& sim_data)
   }
 
   sim_data.advance_particle_queue.sync_size_device_to_host();
+  sim_data.queued_surface_crossing_rays_ +=
+    sim_data.advance_particle_queue.size() - previous_n_advance;
   sim_data.surface_crossing_queue.reset();
   timer.stop();
   sim_data.profiling.surface_crossing_s += timer.elapsed();
