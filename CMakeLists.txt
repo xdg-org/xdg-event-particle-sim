@@ -20,10 +20,15 @@ find_package(XDG REQUIRED PATH_SUFFIXES lib/cmake)
 message(STATUS "Found XDG: ${XDG_DIR} (version ${XDG_VERSION})")
 
 find_package(OpenMP REQUIRED COMPONENTS CXX)
-find_package(fmt CONFIG REQUIRED)
 find_package(Git QUIET)
 
 set(VENDOR_PATHS)
+
+find_package(fmt CONFIG QUIET NO_SYSTEM_ENVIRONMENT_PATH)
+
+if(NOT fmt_FOUND)
+  list(APPEND VENDOR_PATHS vendor/fmt)
+endif()
 
 find_package(argparse CONFIG QUIET)
 
@@ -73,6 +78,11 @@ foreach(VENDOR_PATH IN LISTS VENDOR_PATHS)
   endif()
 endforeach()
 
+if(NOT fmt_FOUND)
+  set(FMT_INSTALL OFF CACHE BOOL "Generate the fmt install target" FORCE)
+  add_subdirectory(vendor/fmt)
+endif()
+
 if(NOT argparse_FOUND)
   set(ARGPARSE_INSTALL OFF CACHE BOOL "" FORCE)
   set(ARGPARSE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -112,8 +122,39 @@ target_link_libraries(event-sim-core
     fmt::fmt
 )
 
-add_executable(xdg-particle-sim-event
+add_library(history-sim-core STATIC
+  src/particle_sim_history_transport.cpp
+)
+
+target_compile_features(history-sim-core PUBLIC cxx_std_17)
+
+target_include_directories(history-sim-core PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(history-sim-core
+  PUBLIC
+    xdg::xdg
+    OpenMP::OpenMP_CXX
+)
+
+add_library(particle-sim-output STATIC
   src/event_sim_output.cpp
+)
+
+target_compile_features(particle-sim-output PUBLIC cxx_std_17)
+
+target_include_directories(particle-sim-output PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(particle-sim-output
+  PUBLIC
+    xdg::xdg
+    fmt::fmt
+)
+
+add_executable(xdg-particle-sim-event
   src/particle_sim_event.cpp
 )
 
@@ -121,7 +162,19 @@ target_compile_features(xdg-particle-sim-event PRIVATE cxx_std_17)
 
 target_link_libraries(xdg-particle-sim-event PRIVATE
   event-sim-core
-  fmt::fmt
+  particle-sim-output
+  argparse::argparse
+)
+
+add_executable(xdg-particle-sim-history
+  src/particle_sim_history.cpp
+)
+
+target_compile_features(xdg-particle-sim-history PRIVATE cxx_std_17)
+
+target_link_libraries(xdg-particle-sim-history PRIVATE
+  history-sim-core
+  particle-sim-output
   argparse::argparse
 )
 
@@ -143,7 +196,9 @@ if(EVENT_SIM_BUILD_TESTS)
   add_subdirectory("tests")
 endif()
 
-install(TARGETS xdg-particle-sim-event
+install(TARGETS
+  xdg-particle-sim-event
+  xdg-particle-sim-history
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 

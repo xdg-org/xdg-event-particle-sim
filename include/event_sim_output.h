@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "event_simulation_data.h"
+#include "history_simulation_data.h"
 
 namespace event_sim_output {
 
@@ -27,6 +28,11 @@ void write_summary(std::ostream& output,
                    const SummaryMetadata& metadata,
                    const EventSimulationData& sim_data);
 
+void write_summary(std::ostream& output,
+                   const std::string& format,
+                   const SummaryMetadata& metadata,
+                   const HistorySimulationData& sim_data);
+
 void write_ray_launch_profile_csv(const std::string& filename,
                                   const EventSimulationData& sim_data);
 
@@ -42,7 +48,7 @@ void print_lost_particle_diagnostic(std::ostream& output,
 
 void write_cell_track_csv(const std::string& filename,
                           const std::vector<MeshID>& volumes,
-                          const EventSimulationData& sim_data);
+                          const std::vector<double>& cell_tracks);
 } // namespace event_sim_output
 
 #endif

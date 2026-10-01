@@ -71,7 +71,7 @@ struct EventSimulationData {
   std::vector<double> cell_tracks;
   double* device_cell_tracks {nullptr};
 
-  uint32_t max_particles_in_flight_ {10000000};
+  uint32_t max_particles_in_flight_ {100000000};
   EventParticle* device_particles {nullptr};
   int gpu_id {0};
   int host_id {omp_get_initial_device()};
