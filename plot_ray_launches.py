@@ -1,45 +1,10 @@
 #!/usr/bin/env python3
 import argparse
-import warnings
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib import font_manager
 from matplotlib.colors import LogNorm, Normalize
-
-
-PAPER_FONT_SIZE_PT = 10.5
-PAPER_OCCUPANCY_WIDTH_IN = 4.4
-PAPER_OCCUPANCY_HEIGHT_IN = 2.75
-PAPER_OCCUPANCY_OUTPUT = Path("atr_ray_volume_occupancy.pdf")
-
-if not any(
-    font.name == "Times New Roman" for font in font_manager.fontManager.ttflist
-):
-    warnings.warn(
-        "Times New Roman is not installed; figures will use the Tinos "
-        "fallback and must be regenerated once Times New Roman is available.",
-        stacklevel=1,
-    )
-
-plt.rcParams.update({
-    "font.family": "serif",
-    # Prefer the required face. Tinos is a metrically compatible fallback for
-    # systems on which Times New Roman has not been installed.
-    "font.serif": ["Times New Roman", "Times", "Tinos"],
-    "font.size": PAPER_FONT_SIZE_PT,
-    "axes.titlesize": PAPER_FONT_SIZE_PT,
-    "axes.labelsize": PAPER_FONT_SIZE_PT,
-    "xtick.labelsize": PAPER_FONT_SIZE_PT,
-    "ytick.labelsize": PAPER_FONT_SIZE_PT,
-    "legend.fontsize": PAPER_FONT_SIZE_PT,
-    "legend.title_fontsize": PAPER_FONT_SIZE_PT,
-    "pdf.fonttype": 42,
-    "ps.fonttype": 42,
-    "svg.fonttype": "none",
-})
-
 
 EVENT_TYPE_ORDER = ["initial", "collision", "surface_crossing", "mixed", "unlabelled"]
 EVENT_TYPE_LABELS = {
@@ -273,7 +238,7 @@ def select_volume_occupancy_launch(ray_launches, requested_launch_index):
 
 
 def plot_volume_occupancy(
-    volume_occupancies, ray_launches, requested_launch_index=None
+    volume_occupancies, ray_launches, csv_stem, requested_launch_index=None
 ):
     launch_index = select_volume_occupancy_launch(
         ray_launches, requested_launch_index
@@ -293,10 +258,7 @@ def plot_volume_occupancy(
             f"Volume occupancies for launch {launch_index} do not sum to its ray count"
         )
 
-    fig, ax = plt.subplots(
-        figsize=(PAPER_OCCUPANCY_WIDTH_IN, PAPER_OCCUPANCY_HEIGHT_IN),
-        layout="constrained",
-    )
+    fig, ax = plt.subplots(layout="constrained")
     ax.vlines(volume_ids, 1, counts, color="tab:blue", linewidth=0.8)
     for threshold, hardware, color, linestyle in (
         (32, "NVIDIA warp", "tab:orange", "--"),
@@ -322,17 +284,8 @@ def plot_volume_occupancy(
         ),
     )
     ax.grid(axis="y", which="major", alpha=0.25)
-    ax.legend(
-        loc="upper right",
-        fontsize=8,
-        framealpha=0.85,
-        handlelength=1.5,
-        handletextpad=0.4,
-        labelspacing=0.25,
-        borderpad=0.3,
-    )
-    fig.savefig(PAPER_OCCUPANCY_OUTPUT)
-    fig.savefig(PAPER_OCCUPANCY_OUTPUT.with_suffix(".png"), dpi=300)
+    ax.legend(loc="upper right")
+    save_plot(fig, "volume_occupancy", csv_stem)
     plt.show()
 
 
@@ -370,6 +323,7 @@ def main():
         plot_volume_occupancy(
             pd.read_csv(args.volume_occupancy_csv),
             processed_ray_launches,
+            csv_stem,
             args.occupancy_launch_index,
         )
 
