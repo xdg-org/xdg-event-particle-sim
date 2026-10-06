@@ -410,7 +410,7 @@ void process_advance_particle_events(EventSimulationData& sim_data)
   auto collision_queue = sim_data.collision_queue.get_device_data();
   const double mfp = sim_data.mfp_;
   const int gpu_id = sim_data.gpu_id;
-  const bool use_collision_distance_limit = !sim_data.exit_on_bvh_failure_;
+  const bool use_collision_distance_limit = sim_data.enable_collision_distance_limit_;
   double launch_ray_sort_s = 0.0;
 
   Timer timer;

@@ -80,6 +80,7 @@ struct EventSimulationData {
   bool implicit_complement_is_graveyard_ {false};
   std::vector<double> cell_tracks;
   double* device_cell_tracks {nullptr};
+  bool enable_collision_distance_limit_ {false};
 
   uint32_t max_particles_in_flight_ {100000000};
   EventParticle* device_particles {nullptr};

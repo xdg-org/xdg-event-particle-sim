@@ -54,6 +54,7 @@ const std::vector<std::string>& summary_columns()
     "particles_lost",
     "sorting_mode",
     "minimum_sort_items",
+    "collision_distance_limit_enabled",
     "wall_time_s",
     "profile_xdg_setup_s",
     "profile_transport_s",
@@ -156,6 +157,7 @@ void write_summary(std::ostream& output,
       fmt::format("{}", profiling.particles_lost),
       sorting_mode,
       fmt::format("{}", sim_data.minimum_sort_items_),
+      fmt::format("{}", sim_data.enable_collision_distance_limit_),
       fmt::format("{}", metadata.wall_time_s),
       fmt::format("{}", profiling.xdg_setup_s),
       fmt::format("{}", profiling.transport_s),
@@ -199,6 +201,9 @@ void write_summary(std::ostream& output,
   output << "Seed                  : " << sim_data.seed_ << "\n";
   output << "Sorting mode          : " << sorting_mode << "\n";
   output << "Minimum sort items    : " << sim_data.minimum_sort_items_ << "\n";
+  output << "Collision dist limit  : "
+         << (sim_data.enable_collision_distance_limit_ ? "enabled" : "disabled")
+         << "\n";
   output << "----------------------------------------\n";
   output << "Full wall-clock time  : " << metadata.wall_time_s << " s\n";
   output << "XDG setup             : " << profiling.xdg_setup_s << " s\n";
@@ -272,6 +277,7 @@ void write_summary(std::ostream& output,
       fmt::format("{}", profiling.particles_lost),
       "not-applicable",
       "",
+      "not-applicable",
       fmt::format("{}", metadata.wall_time_s),
       fmt::format("{}", profiling.xdg_setup_s),
       fmt::format("{}", profiling.transport_s),
