@@ -3,18 +3,72 @@
 #include <cstdint>
 #include <utility>
 
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include "xdg/xdg.h"
+
+#include "flags.h"
 #include "particle_sim_event.h"
 
 using namespace xdg;
+using namespace event_sim::test;
 
-TEST_CASE("pwr-pincell event sim test")
+TEMPLATE_TEST_CASE("pwr-pincell event sim test", "[event][regression]", EVENT_SIM_SORTING_OPTIONS)
 {
-  // Setup XDG
+  // Test both with and without the collision distance limit enabled
+  const bool collision_limit = GENERATE(false, true);
+
+  DYNAMIC_SECTION("Flags = sorting-" << particle_sort_mode_name(TestType::value) << 
+    ", collision-distance-limit-" << (collision_limit ? "enabled" : "disabled")) 
+  {
+    std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB, RTLibrary::CUBQL);
+    const auto& mm = xdg->mesh_manager();
+    mm->load_file("pwr_pincell.h5m");
+    mm->init();
+    mm->parse_metadata();
+    xdg->prepare_raytracer();
+
+    EventSimulationData sim_data;
+    sim_data.xdg_ = xdg;
+    sim_data.n_particles_ = 100000;
+    sim_data.max_events_ = 100;
+    sim_data.mfp_ = 0.5;
+    sim_data.particle_sort_mode_ = TestType::value;
+    if (particle_sorting_enabled(TestType::value)) {
+      sim_data.minimum_sort_items_ = 0;
+    }
+    sim_data.enable_collision_distance_limit_ = collision_limit;
+
+    transport_particle_event_based(sim_data);
+
+    const std::array expected_cell_tracks {
+      std::pair{MeshID{1}, 716521.42314976},
+      std::pair{MeshID{2}, 240571.85058854704},
+      std::pair{MeshID{3}, 1278350.0991759342},
+      std::pair{MeshID{4}, 0.0}
+    };
+
+    REQUIRE(sim_data.profiling.particles_reached_max_events == 100000);
+    REQUIRE(sim_data.profiling.particles_dead == 0);
+    REQUIRE(sim_data.profiling.particles_lost == 0);
+    REQUIRE(sim_data.profiling.ray_launches == 166);
+    REQUIRE(sim_data.profiling.rays_traced == 10000000);
+    REQUIRE(sim_data.profiling.collision_calls > 0);
+    REQUIRE(sim_data.profiling.surface_crossing_calls > 0);
+    REQUIRE(sim_data.host_ray_launch_records_.empty());
+
+    for (const auto& [volume, expected_track] : expected_cell_tracks) {
+      INFO("volume_id=" << volume);
+      REQUIRE_THAT(sim_data.cell_tracks.at(volume), Catch::Matchers::WithinRel(expected_track, 1.0e-12));
+    }
+  }
+}
+
+TEST_CASE("pwr-pincell event sim with volume occupancy profiling", "[event][profiling]")
+{
   std::shared_ptr<XDG> xdg = XDG::create(MeshLibrary::MOAB, RTLibrary::CUBQL);
   const auto& mm = xdg->mesh_manager();
   mm->load_file("pwr_pincell.h5m");
@@ -22,7 +76,6 @@ TEST_CASE("pwr-pincell event sim test")
   mm->parse_metadata();
   xdg->prepare_raytracer();
 
-  // Setup EventSimulationData
   EventSimulationData sim_data;
   sim_data.xdg_ = xdg;
   sim_data.n_particles_ = 100000;
@@ -40,13 +93,13 @@ TEST_CASE("pwr-pincell event sim test")
     std::pair{MeshID{4}, 0.0}
   };
 
-  // Basic triage of the results
   REQUIRE(sim_data.profiling.particles_reached_max_events == 100000);
   REQUIRE(sim_data.profiling.particles_dead == 0);
   REQUIRE(sim_data.profiling.particles_lost == 0);
   REQUIRE(sim_data.profiling.ray_launches == 166);
   REQUIRE(sim_data.profiling.rays_traced == 10000000);
-
+  REQUIRE(sim_data.profiling.collision_calls > 0);
+  REQUIRE(sim_data.profiling.surface_crossing_calls > 0);
   REQUIRE(sim_data.host_ray_launch_records_.size() == sim_data.profiling.ray_launches);
 
   std::uint64_t num_profiled_rays = 0;
@@ -86,10 +139,8 @@ TEST_CASE("pwr-pincell event sim test")
   REQUIRE(initial_launch.volume_occupancies.size() == 1);
   REQUIRE(initial_launch.volume_occupancies.front().num_rays == initial_launch.num_rays);
 
-  // Check the cell track lengths
   for (const auto& [volume, expected_track] : expected_cell_tracks) {
     INFO("volume_id=" << volume);
     REQUIRE_THAT(sim_data.cell_tracks.at(volume), Catch::Matchers::WithinRel(expected_track, 1.0e-12));
   }
-
 }
