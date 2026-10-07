@@ -455,7 +455,7 @@ void process_advance_particle_events(EventSimulationData& sim_data)
     ray_hits[i].direction[2] = p.u_.z;
     ray_hits[i].t_min = 0.0;
     ray_hits[i].t_max = use_collision_distance_limit
-                      ? p.collision_distance_ + TINY_BIT
+                      ? p.collision_distance_
                       : INFTY;
     ray_hits[i].volume = p.volume_;
     ray_hits[i].last_hit_primitive = ID_NONE;
