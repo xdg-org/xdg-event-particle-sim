@@ -106,6 +106,11 @@ int main(int argc, char** argv) {
       .implicit_value(true)
       .help("Log BVH diagnostics and exit the program if the BVH traversal unexpectedly fails");
 
+  args.add_argument("-c", "--enable-collision-distance-limit")
+      .default_value(false)
+      .implicit_value(true)
+      .help("Enable distance limiting on rays by the particle's sampled next collision distance.");
+
   try {
     args.parse_args(argc, argv);
   }
@@ -152,12 +157,10 @@ int main(int argc, char** argv) {
   const std::string model_filename = args.get<std::string>("filename");
   const std::string model_name = std::filesystem::path(model_filename).filename().string();
   const std::string output_format = args.get<std::string>("--format");
-  const std::string lost_particle_output =
-    args.get<std::string>("--lost-particle-output");
-  const uint32_t max_lost_particle_records =
-    args.get<uint32_t>("--max-lost-particle-records");
-  const bool exit_on_bvh_failure =
-    args.get<bool>("--exit-on-bvh-failure");
+  const std::string lost_particle_output = args.get<std::string>("--lost-particle-output");
+  const uint32_t max_lost_particle_records = args.get<uint32_t>("--max-lost-particle-records");
+  const bool exit_on_bvh_failure = args.get<bool>("--exit-on-bvh-failure");
+  const bool enable_collision_distance_limit = args.get<bool>("--enable-collision-distance-limit");
 
   if (max_lost_particle_records == 0) {
     fatal_error("Maximum number of lost particle records must be greater than 0");
@@ -214,11 +217,8 @@ int main(int argc, char** argv) {
   // update the mean free path
   sim_data.mfp_ = args.get<double>("--mfp");
 
-  sim_data.profile_volume_occupancy_ =
-    args.get<bool>("--enable-profiling-volume-occupancy");
-  sim_data.profile_ray_launches_ =
-    args.get<bool>("--enable-profiling-ray-launch")
-    || sim_data.profile_volume_occupancy_;
+  sim_data.profile_volume_occupancy_ = args.get<bool>("--enable-profiling-volume-occupancy");
+  sim_data.profile_ray_launches_ = args.get<bool>("--enable-profiling-ray-launch") || sim_data.profile_volume_occupancy_;
   sim_data.particle_sort_mode_ = particle_sort_mode;
   sim_data.minimum_sort_items_ = minimum_sort_items;
   sim_data.implicit_complement_is_graveyard_ = args.get<bool>("--ipc-graveyard");
@@ -228,6 +228,9 @@ int main(int argc, char** argv) {
   sim_data.record_lost_particles_ = true;
   sim_data.max_lost_particle_records_ = max_lost_particle_records;
   sim_data.exit_on_bvh_failure_ = exit_on_bvh_failure;
+  // Enable collision distance limiting only if the user requested it and the exit-on-bvh-failure flag is not set
+  sim_data.enable_collision_distance_limit_ =
+    enable_collision_distance_limit && !exit_on_bvh_failure;
 
   transport_particle_event_based(sim_data);
 
@@ -242,7 +245,7 @@ int main(int argc, char** argv) {
       std::cout, lost_particle_output, sim_data);
 
     if (!sim_data.host_lost_particles_.empty()) {
-      xdg->bvh_diagnostics(sim_data.host_lost_particles_.front().volume);
+      // xdg->bvh_diagnostics(sim_data.host_lost_particles_.front().volume);
     }
 
     std::cout << "Exiting early after detecting a BVH traversal failure.\n";
