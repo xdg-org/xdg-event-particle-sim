@@ -63,7 +63,7 @@ void run_pwr_pincell_reference_test(ParticleSortMode sorting_mode, bool enable_c
 
 } // namespace
 
-TEMPLATE_TEST_CASE("pwr-pincell event sim without collision distance limiting", "[event][regression]", EVENT_SIM_SORTING_OPTIONS)
+TEMPLATE_TEST_CASE("Event based pwr-pincell regression", "[event][regression]", EVENT_SIM_SORTING_OPTIONS)
 {
   constexpr ParticleSortMode sorting_mode = TestType::value;
   constexpr bool enable_collision_distance_limit = false;
@@ -74,7 +74,7 @@ TEMPLATE_TEST_CASE("pwr-pincell event sim without collision distance limiting", 
   }
 }
 
-TEMPLATE_TEST_CASE("pwr-pincell event sim with collision distance limiting", "[event][regression]", EVENT_SIM_SORTING_OPTIONS)
+TEMPLATE_TEST_CASE("Event based pwr-pincell regression with collision distance limiting", "[event][regression]", EVENT_SIM_SORTING_OPTIONS)
 {
   constexpr ParticleSortMode sorting_mode = TestType::value;
   constexpr bool enable_collision_distance_limit = true;
