@@ -47,8 +47,7 @@ TEST_CASE("pwr-pincell event sim test")
   REQUIRE(sim_data.profiling.ray_launches == 166);
   REQUIRE(sim_data.profiling.rays_traced == 10000000);
 
-  REQUIRE(sim_data.host_ray_launch_records_.size()
-          == sim_data.profiling.ray_launches);
+  REQUIRE(sim_data.host_ray_launch_records_.size() == sim_data.profiling.ray_launches);
 
   std::uint64_t num_profiled_rays = 0;
   std::uint64_t num_initial_rays = 0;
@@ -56,27 +55,21 @@ TEST_CASE("pwr-pincell event sim test")
   std::uint64_t num_surface_crossing_rays = 0;
   std::uint64_t num_volume_occupancy_rays = 0;
   for (const auto& launch : sim_data.host_ray_launch_records_) {
-    const auto num_event_source_rays =
-      launch.num_initial_rays
-      + launch.num_collision_rays
-      + launch.num_surface_crossing_rays;
+    const auto num_event_source_rays = launch.num_initial_rays + launch.num_collision_rays + launch.num_surface_crossing_rays;
     REQUIRE(num_event_source_rays == launch.num_rays);
 
     num_profiled_rays += static_cast<std::uint64_t>(launch.num_rays);
     num_initial_rays += static_cast<std::uint64_t>(launch.num_initial_rays);
     num_collision_rays += static_cast<std::uint64_t>(launch.num_collision_rays);
-    num_surface_crossing_rays +=
-      static_cast<std::uint64_t>(launch.num_surface_crossing_rays);
+    num_surface_crossing_rays += static_cast<std::uint64_t>(launch.num_surface_crossing_rays);
 
     std::uint64_t launch_occupancy_rays = 0;
     for (const auto& occupancy : launch.volume_occupancies) {
       REQUIRE(occupancy.num_rays > 0);
-      launch_occupancy_rays +=
-        static_cast<std::uint64_t>(occupancy.num_rays);
+      launch_occupancy_rays += static_cast<std::uint64_t>(occupancy.num_rays);
     }
     REQUIRE(launch_occupancy_rays == static_cast<std::uint64_t>(launch.num_rays));
-    REQUIRE(launch.volume_occupancies.size()
-            == static_cast<std::size_t>(launch.num_active_volumes));
+    REQUIRE(launch.volume_occupancies.size() == static_cast<std::size_t>(launch.num_active_volumes));
     num_volume_occupancy_rays += launch_occupancy_rays;
   }
 
@@ -91,14 +84,12 @@ TEST_CASE("pwr-pincell event sim test")
   REQUIRE(initial_launch.num_collision_rays == 0);
   REQUIRE(initial_launch.num_surface_crossing_rays == 0);
   REQUIRE(initial_launch.volume_occupancies.size() == 1);
-  REQUIRE(initial_launch.volume_occupancies.front().num_rays
-          == initial_launch.num_rays);
+  REQUIRE(initial_launch.volume_occupancies.front().num_rays == initial_launch.num_rays);
 
   // Check the cell track lengths
   for (const auto& [volume, expected_track] : expected_cell_tracks) {
     INFO("volume_id=" << volume);
-    REQUIRE_THAT(sim_data.cell_tracks.at(volume),
-                 Catch::Matchers::WithinRel(expected_track, 1.0e-12));
+    REQUIRE_THAT(sim_data.cell_tracks.at(volume), Catch::Matchers::WithinRel(expected_track, 1.0e-12));
   }
 
 }
