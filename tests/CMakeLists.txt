@@ -15,6 +15,10 @@ foreach(test ${TEST_NAMES})
         EXTRA_ARGS "--reporter;console;--out=/dev/stdout")
 endforeach()
 
+if(TARGET event_sim_thrust_sort)
+    target_compile_definitions(test_event_sim PRIVATE EVENT_SIM_THRUST_SORT)
+endif()
+
 add_executable(test_history_sim test_main.cpp test_history_sim.cpp)
 target_compile_features(test_history_sim PRIVATE cxx_std_17)
 target_link_libraries(test_history_sim PRIVATE history-sim-core Catch2::Catch2)
